@@ -28,7 +28,7 @@ try { [Console]::InputEncoding  = New-Object System.Text.UTF8Encoding($false) } 
 try { $OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.9.133"
+$ScriptVersion = "1.10.0"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -102,13 +102,7 @@ $script:OutFileRtPlus = $OutFileRtPlus
 # -------------------------------------------------------------------------------------------------
 # Persistent settings (single file)
 #
-# This script previously persisted three separate settings files:
-# - prefix_language.txt
-# - ascii_safe_enabled.txt
-# - transliteration_enabled.txt
-#
-# To reduce clutter and make future expansion easier, all persistent settings are now stored in a single
-# JSON file in the script directory.
+# All persistent settings are stored in a single JSON file in the application directory.
 # -------------------------------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------------------------------
@@ -185,35 +179,8 @@ function Load-Settings {
         return
     }
 
-    # 2) Migration path: read older individual files once (if they exist), then create the unified settings file.
-    try {
-        $legacyPrefix = Join-Path $AppBaseDir 'prefix_language.txt'
-        if (Test-Path $legacyPrefix) {
-            $t = (Get-Content -LiteralPath $legacyPrefix -Raw -ErrorAction SilentlyContinue).Trim()
-            if ($t) {
-                $parts = $t.Split('|')
-                if ($parts.Count -ge 1 -and $parts[0]) { $script:Settings.PrefixLanguageCode = $parts[0].Trim().ToUpperInvariant() }
-            }
-        }
-    } catch { }
 
-    try {
-        $legacyTrans = Join-Path $AppBaseDir 'transliteration_enabled.txt'
-        if (Test-Path $legacyTrans) {
-            $t = (Get-Content -LiteralPath $legacyTrans -Raw -ErrorAction SilentlyContinue).Trim()
-            if ($t -eq '0') { $script:Settings.TransliterationEnabled = $false }
-            elseif ($t -eq '1') { $script:Settings.TransliterationEnabled = $true }
-        }
-    } catch { }
-
-    try {
-        $legacyAscii = Join-Path $AppBaseDir 'ascii_safe_enabled.txt'
-        if (Test-Path $legacyAscii) {
-            $t = (Get-Content -LiteralPath $legacyAscii -Raw -ErrorAction SilentlyContinue).Trim()
-            if ($t -eq '1') { $script:Settings.AsciiSafeEnabled = $true }
-            elseif ($t -eq '0') { $script:Settings.AsciiSafeEnabled = $false }
-        }
-    } catch { }
+    # 2) First run: create the settings file with defaults.
 
     Save-Settings
 }
@@ -336,13 +303,16 @@ $PrefixLanguages = @(
     @{ Code='RO'; Name='Română';             Native='Acum se aude: ';           Ascii='Acum se aude: ' }
     @{ Code='SL'; Name='Slovenščina';        Native='Trenutno se predvaja: ';   Ascii='Trenutno se predvaja: ' }
     @{ Code='HR'; Name='Hrvatski';           Native='Sada svira: ';             Ascii='Sada svira: ' }
-    @{ Code='SR'; Name='Srpski (Latin)';     Native='Sada svira: ';             Ascii='Sada svira: ' }
     @{ Code='BS'; Name='Bosanski';           Native='Sada svira: ';             Ascii='Sada svira: ' }
     @{ Code='MK'; Name='Makedonski (Latin)'; Native='Momentalno sviri: ';       Ascii='Momentalno sviri: ' }
     @{ Code='SQ'; Name='Shqip';              Native='Tani po luhet: ';          Ascii='Tani po luhet: ' }
     @{ Code='TR'; Name='Türkçe';             Native='Şimdi çalıyor: ';          Ascii='Simdi caliyor: ' }
     @{ Code='EL'; Name='Ελληνικά';           Native='Τώρα παίζει: ';            Ascii='Tora paizei: ' }
     @{ Code='RU'; Name='Русский';            Native='Сейчас играет: ';          Ascii='Seichas igraet: ' }
+    @{ Code='SR'; Name='Srpski';             Native='Сада свира: ';             Ascii='Sada svira: ' }
+    @{ Code='BG'; Name='Български';          Native='Сега звучи: ';             Ascii='Sega zvuchi: ' }
+    @{ Code='UK'; Name='Українська';         Native='Зараз грає: ';             Ascii='Zaraz hraie: ' }
+    @{ Code='BE'; Name='Беларуская';         Native='Зараз грае: ';             Ascii='Zaraz hrae: ' }
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -868,6 +838,17 @@ function Show-LanguageMenu {
 
     $selected = Get-PrefixLanguageIndex $script:PrefixLanguageCode
 
+    $translitHintCodes = @("EL","RU","SR","BG","UK","BE")
+    $translitHintPad = 0
+    if (-not $script:AsciiSafeEnabled -and $script:TransliterationEnabled) {
+        foreach ($e2 in $PrefixLanguages) {
+            if ($e2.Code -in $translitHintCodes) {
+                $n2 = $e2.Native.Trim().Length
+                if ($n2 -gt $translitHintPad) { $translitHintPad = $n2 }
+            }
+        }
+    }
+
     # Ensure the currently selected language is visible immediately when opening the menu.
     $listH0 = $menuH - 5
     if ($PrefixLanguages.Count -le $listH0) {
@@ -912,8 +893,10 @@ function Show-LanguageMenu {
             # Visual hint: when transliteration is enabled (and ASCII-safe is not), show the original script
             # plus the actual output form for Greek/Cyrillic prefixes.
             $pShown = $p.Trim()
-            if (-not $script:AsciiSafeEnabled -and $script:TransliterationEnabled -and ($e.Code -in @("EL","RU"))) {
-                $pShown = ("{0} -> {1}" -f $e.Native.Trim(), $e.Ascii.Trim())
+            if (-not $script:AsciiSafeEnabled -and $script:TransliterationEnabled -and ($e.Code -in @("EL","RU","SR","BG","UK","BE"))) {
+                $native0 = $e.Native.Trim()
+                $nativePadded = $(if ($translitHintPad -gt 0) { $native0.PadRight($translitHintPad) } else { $native0 })
+                $pShown = ("{0} -> {1}" -f $nativePadded, $e.Ascii.Trim())
             }
 
             $label = ("{0}  {1}  {2}" -f $e.Code.PadRight(3), $e.Name.PadRight(18), $pShown)
@@ -1420,12 +1403,12 @@ function Show-SettingsMenu {
         $help  = "Up/Down: move   Enter: open/select   Esc: cancel"
 
         $items = @(
-            @{ Label = "Working directory";     Kind = "workdir" }
-            @{ Label = "Prefix language";       Kind = "prefix" }
-            @{ Label = "ASCII-safe";            Kind = "ascii" }
-            @{ Label = "Transliteration EL/RU"; Kind = "translit" }
-            @{ Label = "Playout delimiter";     Kind = "sep" }
-            @{ Label = "Save & exit";                  Kind = "exit" }
+            @{ Label = "Working directory";      Kind = "workdir" }
+            @{ Label = "Prefix language";        Kind = "prefix" }
+            @{ Label = "ASCII-safe";             Kind = "ascii" }
+            @{ Label = "Transliteration EL/CYR"; Kind = "translit" }
+            @{ Label = "Playout delimiter";      Kind = "sep" }
+            @{ Label = "Save & exit";            Kind = "exit" }
         )
 
         $menuW = [Math]::Min($winW - 4, 56)
@@ -1533,7 +1516,7 @@ function Show-SettingsMenu {
                     $leftText  = "ASCII-safe"
                     $valueText = $(if ($script:AsciiSafeEnabled) { "[ON]" } else { "[OFF]" })
                 } elseif ($kind -eq 'translit') {
-                    $leftText = "Transliteration EL/RU"
+                    $leftText = "Transliteration EL/CYR"
                     if ($script:AsciiSafeEnabled) {
                         $valueText = "[ON*]"
                     } else {
@@ -1634,7 +1617,7 @@ function Show-SettingsMenu {
                         if ($newVal -ne $script:AsciiSafeEnabled) { $changed = Toggle-AsciiSafe } # ensure exact state
                     }
                 } elseif ($kind -eq 'translit') {
-                    $newVal = Show-OnOffMenu "Transliteration EL/RU" $script:TransliterationEnabled
+                    $newVal = Show-OnOffMenu "Transliteration EL/CYR" $script:TransliterationEnabled
                     if ($null -ne $newVal -and $newVal -ne $script:TransliterationEnabled) {
                         if ($script:AsciiSafeEnabled -and -not $newVal) {
                             $changed = $false
@@ -2329,10 +2312,31 @@ function Restore-UiAfterMenu([int]$menuTop, [int]$menuHeight) {
     # Redraw the status frame separators and the live lines that may have been covered.
     try { Draw-StatusFrame } catch { }
 
-    if (-not [string]::IsNullOrEmpty($script:LastInLine))    { try { Write-At 0 ($script:StatusTop + 1) $script:LastInLine    $script:LastInFg $true } catch { } }
-    if (-not [string]::IsNullOrEmpty($script:LastPxLine))    { try { Write-At 0 ($script:StatusTop + 2) $script:LastPxLine    $script:LastPxFg $true } catch { } }
-    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine)) { try { Write-At 0 ($script:StatusTop + 3) $script:LastOutRtLine $script:LastRtFg $true } catch { } }
-    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine)) { try { Write-At 0 ($script:StatusTop + 4) $script:LastOutRpLine $script:LastRpFg $true } catch { } }
+    $tsPart  = ""
+    if ($script:LastInLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s") { $tsPart = $matches[0] }
+    $sepPart = ": "
+
+    $labIn = "INPUT       "
+    $labPx = "PREFIX OUT  "
+    $labRt = "OUTPUT RT   "
+    $labRp = "OUTPUT RT+  "
+
+    $inVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastInLine) -and ($script:LastInLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $inVal = $matches[1] }
+
+    $pxVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastPxLine) -and ($script:LastPxLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $pxVal = $matches[1] }
+
+    $rtVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine) -and ($script:LastOutRtLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $rtVal = $matches[1] }
+
+    $rpVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine) -and ($script:LastOutRpLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $rpVal = $matches[1] }
+
+    if (-not [string]::IsNullOrEmpty($script:LastInLine))    { try { Write-SegmentedLine 0 ($script:StatusTop + 1) $tsPart $script:BaseFg $labIn $script:LastInFg $sepPart $script:BaseFg $inVal   $script:LastInFg $true } catch { } }
+    if (-not [string]::IsNullOrEmpty($script:LastPxLine))    { try { Write-SegmentedLine 0 ($script:StatusTop + 2) $tsPart $script:BaseFg $labPx $script:LastPxFg $sepPart $script:BaseFg $pxVal  $script:LastPxFg $true } catch { } }
+    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine)) { try { Write-SegmentedLine 0 ($script:StatusTop + 3) $tsPart $script:BaseFg $labRt $script:LastRtFg $sepPart $script:BaseFg $rtVal     $script:LastRtFg $true } catch { } }
+    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine)) { try { Write-SegmentedLine 0 ($script:StatusTop + 4) $tsPart $script:BaseFg $labRp $script:LastRpFg $sepPart $script:BaseFg $rpVal $script:LastRpFg $true } catch { } }
 
     $script:HeartbeatLayoutValid = $false
 
@@ -2397,10 +2401,23 @@ if ($k.Key -eq [ConsoleKey]::F10 -or ($k.Key -eq [ConsoleKey]::S -and ($k.Modifi
         try { Apply-WorkDirIfConfigured } catch { }
         $script:RebuildWatcher = $true
     }
+
+    # IMPORTANT: When the input is currently in a warning state (Expired / NotAvailable),
+    # do NOT trigger an immediate Do-Update() on menu exit. That would:
+    # - re-read the stale/absent input,
+    # - mark it as "fresh seen",
+    # - reset the last-update timer,
+    # - and clear the warning colors prematurely.
+    #
+    # Instead, keep the warning UI active until a *real* fresh input arrives.
+    try {
+        $stateNow = Get-InputUiState
+        if ($changed -and $stateNow -ne "Normal") { return $false }
+    } catch { }
+
     return $changed
 }
-
-    return $false
+return $false
 }
 
 function Get-UiWidth([int]$minWidth = 20) {
@@ -2444,6 +2461,36 @@ function Write-At([int]$x, [int]$y, [string]$text, [ConsoleColor]$fg, [bool]$Pad
         }
     } catch { }
     try { [Console]::CursorVisible = $false } catch { }
+}
+
+function Write-SegmentedLine([int]$x, [int]$y, [string]$aText, [ConsoleColor]$aFg, [string]$bText, [ConsoleColor]$bFg, [string]$cText, [ConsoleColor]$cFg, [string]$dText, [ConsoleColor]$dFg, [bool]$PadLine = $true) {
+    $w = Get-UiWidth 40
+    $max = [Math]::Max(0, $w - $x - 1)
+
+    # Clear the full line region first to avoid remnants when content shrinks.
+    if ($PadLine) { try { Write-At $x $y "" $script:BaseFg $true } catch { } }
+
+    $prefix = [string]$aText + [string]$bText + [string]$cText
+    $prefixLen = $prefix.Length
+
+    $remain = [Math]::Max(0, $max - $prefixLen)
+    $d = Pad-OrEllipsize ([string]$dText) $remain
+
+    try { Write-At $x $y ([string]$aText) $aFg $false } catch { }
+    $x2 = $x + ([string]$aText).Length
+    try { Write-At $x2 $y ([string]$bText) $bFg $false } catch { }
+    $x3 = $x2 + ([string]$bText).Length
+    try { Write-At $x3 $y ([string]$cText) $cFg $false } catch { }
+    $x4 = $x3 + ([string]$cText).Length
+    try { Write-At $x4 $y $d $dFg $false } catch { }
+
+    if ($PadLine) {
+        $written = $prefixLen + $d.Length
+        $pad = [Math]::Max(0, $max - $written)
+        if ($pad -gt 0) {
+            try { Write-At ($x + $written) $y (" " * $pad) $script:BaseFg $false } catch { }
+        }
+    }
 }
 
 function Write-AtSegments([int]$x, [int]$y, [object[]]$segments, [ConsoleColor]$defaultFg, [bool]$PadLine = $true) {
@@ -2541,7 +2588,13 @@ $script:LastRawInput    = ""
 $script:LastPrefixOut   = ""
 $script:LastRtText      = ""
 $script:LastRtPlusText  = ""
+$script:LastRawInputShown   = ""
+$script:LastPrefixOutShown  = ""
+$script:LastRtTextShown     = ""
+$script:LastRtPlusTextShown = ""
 $script:LastInputUiState = ""
+
+$script:HeaderWarnActive = $false
 
 $script:LastMetadataValid = $false
 function Redraw-Ui {
@@ -2773,11 +2826,25 @@ function Draw-Header {
 
     Write-At 0 ($script:HeaderTop + 0) $t0 $script:BaseFg $true
     Write-At 0 ($script:HeaderTop + 1) ""  $script:BaseFg $true
+    $tsA = "Watching   "
+    $tsB = "Writing    "
+    $sep = ": "
 
-    Write-At 0 ($script:HeaderTop + 2) ("• Watching INPUT       : {0}" -f $InFile)        $script:BaseFg $true
-    Write-At 0 ($script:HeaderTop + 3) ("• Writing PREFIX OUT   : {0}" -f $PrefixFile)    $script:BaseFg $true
-    Write-At 0 ($script:HeaderTop + 4) ("• Writing OUTPUT RT    : {0}" -f $OutFileRt)     $script:BaseFg $true
-    Write-At 0 ($script:HeaderTop + 5) ("• Writing OUTPUT RT+   : {0}" -f $OutFileRtPlus) $script:BaseFg $true
+    $labIn = "INPUT       "
+    $labPx = "PREFIX OUT  "
+    $labRt = "OUTPUT RT   "
+    $labRp = "OUTPUT RT+  "
+
+    $fgIn = if ($script:HeaderWarnActive) { $UI_Color_WarningText } else { $UI_Color_Input }
+    $fgPx = if ($script:HeaderWarnActive) { $UI_Color_WarningText } else { $UI_Color_Prefix }
+    $fgRt = if ($script:HeaderWarnActive) { $UI_Color_WarningText } else { $UI_Color_RT }
+    $fgRp = if ($script:HeaderWarnActive) { $UI_Color_WarningText } else { $UI_Color_RTPlus }
+
+    Write-SegmentedLine 0 ($script:HeaderTop + 2) $tsA $script:BaseFg $labIn $fgIn $sep $script:BaseFg $InFile $fgIn $true
+    Write-SegmentedLine 0 ($script:HeaderTop + 3) $tsB $script:BaseFg $labPx $fgPx $sep $script:BaseFg $PrefixFile $fgPx $true
+    Write-SegmentedLine 0 ($script:HeaderTop + 4) $tsB $script:BaseFg $labRt $fgRt $sep $script:BaseFg $OutFileRt $fgRt $true
+    Write-SegmentedLine 0 ($script:HeaderTop + 5) $tsB $script:BaseFg $labRp $fgRp $sep $script:BaseFg $OutFileRtPlus $fgRp $true
+
 
     Write-At 0 ($script:HeaderTop + 6) ""  $script:BaseFg $true
 }
@@ -2911,22 +2978,22 @@ function Render-SettingsAndLegend {
 
     # Show current values in square brackets for quick scanning (consistent with the F10 menu).
     $settingsSegments = @(
-        @{ Text = "ASCII-safe ";            Fg = $dimFg }
-        @{ Text = "[";                      Fg = $aValueFg }
-        @{ Text = $aState.Trim();           Fg = $aValueFg }
-        @{ Text = "]";                      Fg = $aValueFg }
-        @{ Text = " | ";                    Fg = $dimFg }
+        @{ Text = "ASCII-safe ";             Fg = $dimFg }
+        @{ Text = "[";                       Fg = $aValueFg }
+        @{ Text = $aState.Trim();            Fg = $aValueFg }
+        @{ Text = "]";                       Fg = $aValueFg }
+        @{ Text = " | ";                     Fg = $dimFg }
 
-        @{ Text = "Transliteration EL/RU "; Fg = $dimFg }
-        @{ Text = "[";                      Fg = $tValueFg }
-        @{ Text = $tDisplay;                Fg = $tValueFg }
-        @{ Text = "]";                      Fg = $tValueFg }
-        @{ Text = " | ";                    Fg = $dimFg }
+        @{ Text = "Transliteration EL/CYR "; Fg = $dimFg }
+        @{ Text = "[";                       Fg = $tValueFg }
+        @{ Text = $tDisplay;                 Fg = $tValueFg }
+        @{ Text = "]";                       Fg = $tValueFg }
+        @{ Text = " | ";                     Fg = $dimFg }
 
-        @{ Text = "Playout delimiter ";     Fg = $dimFg }
-        @{ Text = "[";                      Fg = $valueFgEnabled }
-        @{ Text = "$global:SepGlyph";       Fg = $valueFgEnabled }
-        @{ Text = "]";                      Fg = $valueFgEnabled }
+        @{ Text = "Playout delimiter ";      Fg = $dimFg }
+        @{ Text = "[";                       Fg = $valueFgEnabled }
+        @{ Text = "$global:SepGlyph";        Fg = $valueFgEnabled }
+        @{ Text = "]";                       Fg = $valueFgEnabled }
     )
 # Separator line directly under the Last update row
     $w = Get-UiWidth 40
@@ -3055,14 +3122,47 @@ if ($inputState -eq "NotAvailable") {
     $rtPlusText = "<none>"
 }
 
+# Persist the latest *shown* values for UI redraw scenarios (menu overlay restore, partial refresh).
+$script:LastRawInputShown   = $rawInput
+$script:LastPrefixOutShown  = $prefixOut
+$script:LastRtTextShown     = $rtText
+$script:LastRtPlusTextShown = $rtPlusText
+
     if ($rawInput) { $rawInput = ([string]$rawInput).Replace([string]$SepChar, [string]$SepGlyph) }
 
     $ts = (Get-Date).ToString("HH:mm:ss")
 
-    $inLine = ("[{0}] INPUT       : {1}" -f $ts, $rawInput)
-    $pxLine = ("[{0}] PREFIX OUT  : {1}" -f $ts, $prefixOut)
-    $outRt  = ("[{0}] OUTPUT RT   : {1}" -f $ts, $rtText)
-    $outRp  = ("[{0}] OUTPUT RT+  : {1}" -f $ts, $rtPlusText)
+    $tsPart  = ("[{0}] " -f $ts)
+    $sepPart = ": "
+
+    $labIn = "INPUT       "
+    $labPx = "PREFIX OUT  "
+    $labRt = "OUTPUT RT   "
+    $labRp = "OUTPUT RT+  "
+
+    $inFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($rawInput)) { $UI_Color_WarningText } else { $UI_Color_Input }
+    # Keep PREFIX OUT in a neutral tone (same as INPUT).
+    $pxFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($prefixOut)) { $UI_Color_WarningText } else { $UI_Color_Prefix }
+    # Use accent colors for outputs (RT = green, RT+ = dark cyan) while keeping PREFIX OUT neutral.
+    $rtFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($rtText)) { $UI_Color_WarningText } else { $UI_Color_RT }
+    $rpFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($rtPlusText)) { $UI_Color_WarningText } else { $UI_Color_RTPlus }
+
+    $warnActive = ($inFg -eq $UI_Color_WarningText)
+
+    Write-SegmentedLine 0 ($script:StatusTop + 1) $tsPart $script:BaseFg $labIn $inFg $sepPart $script:BaseFg $rawInput $inFg $true
+    Write-SegmentedLine 0 ($script:StatusTop + 2) $tsPart $script:BaseFg $labPx $pxFg $sepPart $script:BaseFg $prefixOut $pxFg $true
+    Write-SegmentedLine 0 ($script:StatusTop + 3) $tsPart $script:BaseFg $labRt $rtFg $sepPart $script:BaseFg $rtText $rtFg $true
+    Write-SegmentedLine 0 ($script:StatusTop + 4) $tsPart $script:BaseFg $labRp $rpFg $sepPart $script:BaseFg $rtPlusText $rpFg $true
+
+    if ($warnActive -ne $script:HeaderWarnActive) {
+        $script:HeaderWarnActive = $warnActive
+        try { Draw-Header } catch { }
+    }
+
+    $inLine = ("{0}{1}{2}{3}" -f $tsPart, $labIn, $sepPart, $rawInput)
+    $pxLine = ("{0}{1}{2}{3}" -f $tsPart, $labPx, $sepPart, $prefixOut)
+    $outRt  = ("{0}{1}{2}{3}" -f $tsPart, $labRt, $sepPart, $rtText)
+    $outRp  = ("{0}{1}{2}{3}" -f $tsPart, $labRp, $sepPart, $rtPlusText)
 
     $w = Get-UiWidth 20
     $max = $w - 1
@@ -3072,16 +3172,6 @@ if ($inputState -eq "NotAvailable") {
     $outRt  = Clamp-UiLine $outRt  $max
     $outRp  = Clamp-UiLine $outRp  $max
 
-    $inFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($rawInput)) { $UI_Color_WarningText } else { $UI_Color_Input }
-    Write-At 0 ($script:StatusTop + 1) $inLine $inFg $true
-
-    # Keep PREFIX OUT in a neutral tone (same as INPUT).
-    $pxFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($prefixOut)) { $UI_Color_WarningText } else { $UI_Color_Prefix }
-    Write-At 0 ($script:StatusTop + 2) $pxLine $pxFg $true
-
-    $rtFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($rtText)) { $UI_Color_WarningText } else { $UI_Color_RT }
-# Use accent colors for outputs (RT = green, RT+ = dark cyan) while keeping PREFIX OUT neutral.
-    $rpFg = if ($inputState -ne "Normal") { $UI_Color_WarningText } elseif ([string]::IsNullOrEmpty($rtPlusText)) { $UI_Color_WarningText } else { $UI_Color_RTPlus }
     $script:LastInLine = $inLine
     $script:LastPxLine = $pxLine
     $script:LastOutRtLine = $outRt
@@ -3091,8 +3181,15 @@ if ($inputState -eq "NotAvailable") {
     $script:LastRtFg = $rtFg
     $script:LastRpFg = $rpFg
 
-    Write-At 0 ($script:StatusTop + 3) $outRt $rtFg $true
-    Write-At 0 ($script:StatusTop + 4) $outRp $rpFg $true
+    $script:LastInputUiState = $inputState
+    $script:LastInLine = $inLine
+    $script:LastPxLine = $pxLine
+    $script:LastOutRtLine = $outRt
+    $script:LastOutRpLine = $outRp
+    $script:LastInFg = $inFg
+    $script:LastPxFg = $pxFg
+    $script:LastRtFg = $rtFg
+    $script:LastRpFg = $rpFg
 }
 
 # -------------------- Normalization helpers ----------------------------------
@@ -3646,6 +3743,45 @@ function Strip-TrackNumberPrefixLoose([string]$s) {
 # - Requires an immediate separator ("-", "–", "—", ":") followed by whitespace and real remaining content.
 # - Country list is built from .NET cultures at runtime (English country names) and cached.
 $script:_CountryPrefixRegex = $null
+$script:_CountryAliases = $null
+
+function Get-CountryAliases() {
+    if ($script:_CountryAliases) { return $script:_CountryAliases }
+
+    # Legacy / alternate English country names and common metadata aliases.
+    # This list is shared across:
+    # - Title country-prefix stripping (e.g., "Belgium - Walk Along")
+    # - Artist country/region suffix stripping (e.g., "Artist (Belgium)")
+    $script:_CountryAliases = @(
+        "UK",
+        "U.K.",
+        "Great Britain",
+        "Britain",
+        "USA",
+        "U.S.A.",
+        "US",
+        "U.S.",
+        "UAE",
+        "U.A.E.",
+        "Holland",
+        "Czech Republic",
+        "The Czech Republic",
+        "Czechia",
+        "F.Y.R. Macedonia",
+        "FYR Macedonia",
+        "North Macedonia",
+        "Republic of North Macedonia",
+        "Serbia & Montenegro",
+        "Yugoslavia",
+        "Russian Federation",
+        "Byelorussia",
+        "Türkiye",
+        "Albanie",
+        "Armenie"
+    )
+
+    return $script:_CountryAliases
+}
 
 function Get-CountryPrefixRegex() {
     if ($script:_CountryPrefixRegex) { return $script:_CountryPrefixRegex }
@@ -3658,33 +3794,15 @@ function Get-CountryPrefixRegex() {
                 if ($ri -and -not [string]::IsNullOrWhiteSpace($ri.EnglishName)) {
                     [void]$names.Add($ri.EnglishName.Trim())
                 }
+                if ($ri -and -not [string]::IsNullOrWhiteSpace($ri.TwoLetterISORegionName)) {
+                    [void]$names.Add($ri.TwoLetterISORegionName.Trim())
+                }
             } catch { }
         }
     } catch { }
 
     # Add a few common legacy/alternate English country names that RegionInfo may not emit on this system.
-    foreach ($alias in @(
-        "UK",
-        "U.K.",
-        "Great Britain",
-        "Britain",
-        "USA",
-        "U.S.A.",
-        "US",
-        "U.S.",
-        "Czech Republic",
-        "The Czech Republic",
-        "Czechia",
-        "F.Y.R. Macedonia",
-        "FYR Macedonia",
-        "North Macedonia",
-        "Republic of North Macedonia",
-        "Serbia & Montenegro",
-        "Yugoslavia",
-        "Russian Federation",
-        "Byelorussia",
-        "Türkiye"
-    )) {
+    foreach ($alias in (Get-CountryAliases)) {
         if (-not [string]::IsNullOrWhiteSpace($alias)) { [void]$names.Add($alias.Trim()) }
     }
 
@@ -3714,6 +3832,19 @@ function Strip-CountryPrefix([string]$s) {
     if ([string]::IsNullOrWhiteSpace($s)) { return $s }
     $t = $s.Trim()
 
+    # Support bracketed country prefixes in titles, e.g. "(Belgium) Song" or "[F.Y.R. Macedonia] Track".
+    # We only strip when the bracketed token is recognized as a country name/alias.
+    if ($t -match '^\s*[\(\[\{]\s*(?<cc>[^\)\]\}]+?)\s*[\)\]\}]\s*(?<rest>.+)$') {
+        $cc   = (Cleanup-Whitespace $matches['cc']).Trim()
+        $rest = Cleanup-Whitespace $matches['rest']
+        if (-not [string]::IsNullOrWhiteSpace($cc) -and (Test-IsCountryToken $cc)) {
+            if (-not [string]::IsNullOrWhiteSpace($rest) -and ($rest -match '[\p{L}\p{N}]')) {
+                return $rest
+            }
+        }
+    }
+
+    # Prefix form: "<country> - <title>" / "<country>: <title>"
     $rx = Get-CountryPrefixRegex
     $m  = $rx.Match($t)
     if (-not $m.Success) { return $t }
@@ -3726,6 +3857,59 @@ function Strip-CountryPrefix([string]$s) {
 
     return $rest
 }
+
+function Strip-CountrySuffix([string]$s) {
+    if ([string]::IsNullOrWhiteSpace($s)) { return $s }
+    $t = Cleanup-Whitespace $s
+
+    # Strip a trailing country/region tag that is clearly metadata and not part of the string.
+    # Supported (end of field only):
+    # - Bracketed suffixes:  "Title (Netherlands)", "Track [Belgium]", "Name {Japan}"
+    # - Hyphen suffixes:     "Title - Netherlands", "Track – Belgium", "Name — Japan"
+    # - Country/region codes (ISO2): "Title (US)", "Track [UK]", "Name {DE}"
+    #
+    # This is intentionally conservative: we only strip a *final* token at the end.
+
+    Ensure-CountryData
+
+    # --- 1) Two-letter country/region codes (ISO2) ---
+    $m = [regex]::Match($t, '^(?<name>.+?)\s*(?:\(\s*(?<cc>[A-Z]{2})\s*\)|\[\s*(?<cc>[A-Z]{2})\s*\]|\{\s*(?<cc>[A-Z]{2})\s*\})\s*$')
+    if ($m.Success) {
+        $name = Cleanup-Whitespace $m.Groups["name"].Value
+        $cc   = ($m.Groups["cc"].Value).ToUpperInvariant()
+
+        if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($cc)) {
+            if ($script:_CountryIso2Set.Contains($cc)) { return $name }
+        }
+        return $t
+    }
+
+    # --- 2) Bracketed suffixes: (Country) / [Country] / {Country} ---
+    $m2 = [regex]::Match($t, '^(?<name>.+?)\s*(?:\(\s*(?<tag>[^)\]]+?)\s*\)|\[\s*(?<tag>[^\]]+?)\s*\]|\{\s*(?<tag>[^}]+?)\s*\})\s*$')
+    if ($m2.Success) {
+        $name2 = Cleanup-Whitespace $m2.Groups["name"].Value
+        $tag2  = Cleanup-Whitespace $m2.Groups["tag"].Value
+
+        if (-not [string]::IsNullOrWhiteSpace($name2) -and (Test-IsCountryToken $tag2)) {
+            return $name2
+        }
+    }
+
+    # --- 3) Hyphen/ndash/mdash suffixes: " - Country" / " – Country" / " — Country" ---
+    $m3 = [regex]::Match($t, '^(?<name>.+?)\s*[-–—]\s*(?<tag>[^-–—]+?)\s*$')
+    if ($m3.Success) {
+        $name3 = Cleanup-Whitespace $m3.Groups["name"].Value
+        $tag3  = Cleanup-Whitespace $m3.Groups["tag"].Value
+
+        if (-not [string]::IsNullOrWhiteSpace($name3) -and (Test-IsCountryToken $tag3)) {
+            return $name3
+        }
+    }
+
+    return $t
+}
+
+
 
 function Is-TrackNumberOnly([string]$s) {
     if ([string]::IsNullOrWhiteSpace($s)) { return $false }
@@ -3927,6 +4111,110 @@ function Strip-WithInTitleIfGuestsAlreadyInArtist([string]$artist, [string]$titl
     $head = $title.Substring(0, $m.Index).TrimEnd()
     return (Cleanup-Whitespace $head)
 }
+
+function Strip-ArtistDuplicateTitleTail([string]$artist, [string]$title) {
+    if ([string]::IsNullOrWhiteSpace($artist) -or [string]::IsNullOrWhiteSpace($title)) { return $title }
+
+    # Strip a trailing " - <artist>" (or " – <artist>" / " — <artist>") only if the tail matches a name
+    # already credited in the ARTIST field. This prevents obvious duplicates like:
+    # - "Song Title - The Melody Sisters"
+    #
+    # Intentionally conservative: only strips when the suffix matches an already-credited artist; allows optional whitespace around the dash.
+
+    $pattern = "^(?<h>.+)\s*[-–—]\s*(?<t>.+?)\s*$"
+    $m = [regex]::Match($title, $pattern, "IgnoreCase")
+    if (-not $m.Success) { return $title }
+
+    $tail = Cleanup-Whitespace $m.Groups["t"].Value
+    if ([string]::IsNullOrWhiteSpace($tail)) { return $title }
+
+    if (-not (GuestIsAlreadyCreditedInArtist $artist $tail)) { return $title }
+
+    $head = Cleanup-Whitespace $m.Groups["h"].Value
+    return $head
+}
+
+
+function Strip-ArtistDuplicateTitlePrefix([string]$artist, [string]$title) {
+    if ([string]::IsNullOrWhiteSpace($artist) -or [string]::IsNullOrWhiteSpace($title)) { return $title }
+
+    # Strip a leading "<artist> - " (or with en-dash/em-dash variants) only if the prefix matches a name already credited
+    # in the ARTIST field. This prevents obvious duplicates like:
+    # - "The Melody Sisters - Dank Je Voor De Bloemen"
+    # - "(The Melody Sisters) Dank Je Voor De Bloemen"
+    #
+    # Intentionally conservative: refuses prefixes that contain guest keywords (feat/with/etc.).
+    # Allows optional whitespace around separators and optional bracket wrappers around the artist name.
+
+    # 1) Bracket-wrapped artist prefix, optionally followed by a dash separator:
+    #    "(Artist) Title", "[Artist] Title", "{Artist} Title", and also "(Artist)- Title", etc.
+    $patternBracket = "^\s*[\(\[\{]\s*(?<p>[^\)\]\}]+?)\s*[\)\]\}]\s*(?:[-–—]\s*)?(?<r>.+?)\s*$"
+    $mb = [regex]::Match($title, $patternBracket, "IgnoreCase")
+    if ($mb.Success) {
+        $prefixB = Cleanup-Whitespace $mb.Groups["p"].Value
+        if (-not [string]::IsNullOrWhiteSpace($prefixB)) {
+            if (-not ([regex]::IsMatch($prefixB, "\b(?:feat\.?|ft\.?|featuring|with|met|mit|con|avec|com|w\/|&)\b", "IgnoreCase"))) {
+                if (GuestIsAlreadyCreditedInArtist $artist $prefixB) {
+                    $restB = Cleanup-Whitespace $mb.Groups["r"].Value
+                    if (-not [string]::IsNullOrWhiteSpace($restB)) { return $restB }
+                }
+            }
+        }
+        return $title
+    }
+
+    # 2) Plain artist prefix with a required dash separator.
+    $patternDash = "^(?<p>.+?)\s*[-–—]\s*(?<r>.+?)\s*$"
+    $m = [regex]::Match($title, $patternDash, "IgnoreCase")
+    if (-not $m.Success) { return $title }
+
+    $prefix = Cleanup-Whitespace $m.Groups["p"].Value
+    if ([string]::IsNullOrWhiteSpace($prefix)) { return $title }
+
+    # Do not treat "Artist feat/with Guest - Title" as an artist-duplicate prefix.
+    if ([regex]::IsMatch($prefix, "\b(?:feat\.?|ft\.?|featuring|with|met|mit|con|avec|com|w\/|&)\b", "IgnoreCase")) {
+        return $title
+    }
+
+    if (-not (GuestIsAlreadyCreditedInArtist $artist $prefix)) { return $title }
+
+    $rest = Cleanup-Whitespace $m.Groups["r"].Value
+    if ([string]::IsNullOrWhiteSpace($rest)) { return $title }
+
+    return $rest
+}
+
+function Unwrap-EnclosingArtistBrackets([string]$s) {
+    if ([string]::IsNullOrWhiteSpace($s)) { return $s }
+
+    # If the entire artist token is wrapped in (), [] or {}, unwrap it.
+    # This is conservative and repeats a few times to handle nested wrapping like "[[Artist]]".
+    $t = $s.Trim()
+
+    for ($i = 0; $i -lt 3; $i++) {
+        $m = [regex]::Match($t, '^\s*(?<open>[\(\[\{])\s*(?<inner>.*?)\s*(?<close>[\)\]\}])\s*$', 'CultureInvariant')
+        if (-not $m.Success) { break }
+
+        $open  = $m.Groups["open"].Value
+        $close = $m.Groups["close"].Value
+        $inner = $m.Groups["inner"].Value
+
+        $pairOk = $false
+        if ($open -eq '(' -and $close -eq ')') { $pairOk = $true }
+        elseif ($open -eq '[' -and $close -eq ']') { $pairOk = $true }
+        elseif ($open -eq '{' -and $close -eq '}') { $pairOk = $true }
+
+        if (-not $pairOk) { break }
+
+        $inner = $inner.Trim()
+        if ([string]::IsNullOrWhiteSpace($inner)) { return "" }
+
+        $t = $inner
+    }
+
+    return $t
+}
+
 
 function Get-CompareKey([string]$s) {
     return (Normalize-IdentityKey $s)
@@ -4157,7 +4445,7 @@ function Strip-Trailing-Brackets([string]$s) {
 }
 
 function Strip-FeatTail([string]$s) {
-    return ([regex]::Replace($s, "\s+(feat\.?|ft\.?|featuring)\s+.*$", "", "IgnoreCase")).Trim()
+    return ([regex]::Replace($s, "(?:\s+|\s*[-–—]\s*)(feat\.?|ft\.?|featuring)\s+.*$", "", "IgnoreCase")).Trim()
 }
 
 function Compact-FeatTailToAmp([string]$s) {
@@ -4976,8 +5264,7 @@ function Ensure-CountryData {
     } catch { }
 
     # Common aliases seen in music metadata / exports.
-    foreach ($a in @("USA","U.S.A.","UAE","U.A.E.","UK","U.K.","Holland")) { [void]$nameSet.Add($a) }
-
+    foreach ($a in (Get-CountryAliases)) { [void]$nameSet.Add($a) }
     # Code aliases:
     # - "UK" is commonly used in metadata but ISO-3166 alpha-2 uses "GB".
     [void]$iso2Set.Add("UK")
@@ -4995,7 +5282,17 @@ function Test-IsCountryToken([string]$token) {
     $x = (Cleanup-Whitespace $token).Trim()
     if ([string]::IsNullOrWhiteSpace($x)) { return $false }
 
+    # Exact English name / alias match.
     if ($script:_CountryNameSet.Contains($x)) { return $true }
+
+    # ISO country/region codes (safe at edges only; callers enforce clear delimiters).
+    if ($x -match '^[A-Za-z]{2}$') {
+        $cc2 = $x.ToUpperInvariant()
+        if ($script:_CountryIso2Set.Contains($cc2)) { return $true }
+    } elseif ($x -match '^[A-Za-z]{3}$') {
+        $cc3 = $x.ToUpperInvariant()
+        if ($script:_CountryIso3Set.Contains($cc3)) { return $true }
+    }
 
     # Allow "The <country>" if <country> is in the set (RegionInfo typically omits the article).
     if ($x -match '^(?i)the\s+(.+)$') {
@@ -5005,7 +5302,17 @@ function Test-IsCountryToken([string]$token) {
 
     # Allow dotted abbreviations like "U.S.A." by comparing without dots too.
     $xNoDots = ($x -replace '\.', '').Trim()
-    if ($xNoDots -ne $x -and $script:_CountryNameSet.Contains($xNoDots)) { return $true }
+    if ($xNoDots -ne $x) {
+        if ($script:_CountryNameSet.Contains($xNoDots)) { return $true }
+
+        if ($xNoDots -match '^[A-Za-z]{2}$') {
+            $cc2 = $xNoDots.ToUpperInvariant()
+            if ($script:_CountryIso2Set.Contains($cc2)) { return $true }
+        } elseif ($xNoDots -match '^[A-Za-z]{3}$') {
+            $cc3 = $xNoDots.ToUpperInvariant()
+            if ($script:_CountryIso3Set.Contains($cc3)) { return $true }
+        }
+    }
 
     return $false
 }
@@ -5129,6 +5436,7 @@ if ($sepCount -eq 1) {
     # is present at the very end, and a 1–3 digit track number is attached to it.
     $artistRaw = [regex]::Replace($artistRaw, '(?i)\s*[-–—]?\s*\d{1,3}\s*[\(\[]\s*EAC\s*[\)\]]\s*$', '')
     $artistRaw = Cleanup-Whitespace $artistRaw
+    $artistRaw = Unwrap-EnclosingArtistBrackets $artistRaw
 
     # Also handle album-like EAC tails in the *artist* field, e.g. "Artist - The Hits 2 (EAC)".
     # This is still conservative: it only triggers when "(EAC)" or "[EAC]" is at the very end AND the token
@@ -5186,11 +5494,13 @@ if ($sepCount -eq 1) {
     }
 
     $artist = Normalize-Field $artistRaw
+    $artist = Strip-CountryPrefix $artist
     $artist = Remove-ArtistAcronymSuffix $artist
     $artist = Remove-ArtistRegionSuffix $artist
     $title  = Normalize-Field $titleRaw
 
     $title  = Strip-CountryPrefix $title
+    $title  = Strip-CountrySuffix $title
 
     if ([string]::IsNullOrWhiteSpace($artist) -and [string]::IsNullOrWhiteSpace($title)) { return $null }
 
@@ -5213,9 +5523,13 @@ if ($sepCount -eq 1) {
     $title2 = Filter-ToRdsLatin         $title2
     $title2 = Strip-AlwaysRemoveNoiseTags              $title2
 
+    $title2 = Strip-ArtistDuplicateTitlePrefix $artist $title2
+
     # Now perform guest-tail stripping based on the artist list (prevents duplicates).
     $title2 = Strip-FeatInTitleIfGuestsAlreadyInArtist $artist $title2
     $title2 = Strip-WithInTitleIfGuestsAlreadyInArtist $artist $title2
+    $title2 = Strip-ArtistDuplicateTitleTail $artist $title2
+    $title2 = Strip-MeaninglessTrailingSeparators $title2
 
     $title2 = Cleanup-Whitespace $title2
     $title2 = Strip-AlwaysRemoveNoiseTags       $title2
