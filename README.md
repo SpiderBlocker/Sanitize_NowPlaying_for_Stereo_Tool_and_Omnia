@@ -13,7 +13,7 @@ This project was created through iterative co-development with ChatGPT 5.2, comb
 - Intelligent cleanup of artist/title (removes encoders, bitrates, countries, platform tags, duplicate info, etc.)
 - Smart handling of brackets, “feat.” and common metadata noise
 - Adaptive trimming to the RDS 64-character limit with priority-based shortening for optimal readability
-- Optional transliteration (Cyrillic/Greek) and ASCII-safe mode
+- Optional transliteration (Greek/Cyrillic) and ASCII-safe mode
 - Clean output for RT and RT+ (artist/title tagging)
 - Multilingual “Now playing” prefix
 - Configurable (including custom) field delimiter
@@ -68,3 +68,17 @@ Then configure Stereo Tool (or any other RDS encoder) to read from the sanitized
 ![UI example](images/ex07.png)
 
 ![UI example](images/ex08.png)
+
+![UI example](images/ex09.png)
+
+![UI example](images/ex10.png)
+
+![UI example](images/ex11.png)
+
+![UI example](images/ex12.png)
+
+![UI example](images/ex13.png)
+
+![UI example](images/ex14.png)
+
+
