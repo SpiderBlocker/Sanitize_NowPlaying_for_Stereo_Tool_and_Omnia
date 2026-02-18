@@ -28,7 +28,7 @@ try { [Console]::InputEncoding  = New-Object System.Text.UTF8Encoding($false) } 
 try { $OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.0"
+$ScriptVersion = "1.10.1"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -3315,6 +3315,11 @@ function Cleanup-DanglingArtistSeparators([string]$s) {
     $t = [regex]::Replace($t, "^\s*(?:&|,|/|\+)\s*", "")
     $t = [regex]::Replace($t, "\s*(?:&|,|/|\+)\s*$", "")
 
+    # Also remove a dangling dash separator at the start/end (e.g. "Prince -" after stripping "(EAC)").
+    # Only affects standalone dash tokens (surrounded by whitespace), not hyphenated names like "AC-DC".
+    $t = [regex]::Replace($t, "^\s*(?:-|–|—|−)\s+", "")
+    $t = [regex]::Replace($t, "\s+(?:-|–|—|−)\s*$", "")
+
     return (Cleanup-Whitespace $t)
 }
 
@@ -4208,6 +4213,13 @@ function Unwrap-EnclosingArtistBrackets([string]$s) {
 
         $inner = $inner.Trim()
         if ([string]::IsNullOrWhiteSpace($inner)) { return "" }
+
+        # Only unwrap when the inner text does not itself contain the same bracket type.
+        # This prevents accidental unwrapping of strings like "[WAV] Artist [EAC]" where the outermost
+        # characters happen to form a valid pair but the content clearly contains additional brackets.
+        if ($open -eq '(' -and $close -eq ')' -and $inner -match '[\(\)]') { break }
+        if ($open -eq '[' -and $close -eq ']' -and $inner -match '[\[\]]') { break }
+        if ($open -eq '{' -and $close -eq '}' -and $inner -match '[\{\}]') { break }
 
         $t = $inner
     }
