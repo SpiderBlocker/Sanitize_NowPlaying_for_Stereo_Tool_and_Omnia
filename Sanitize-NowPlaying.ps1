@@ -28,7 +28,7 @@ try { [Console]::InputEncoding  = New-Object System.Text.UTF8Encoding($false) } 
 try { $OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.1"
+$ScriptVersion = "1.10.2"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -935,8 +935,10 @@ function Show-LanguageMenu {
     }
 
     _DrawMenu
-
     while ($true) {
+        Start-Sleep -Milliseconds $UI_ShortSleepMs
+        Invoke-MenuIdleTick
+        if (-not [Console]::KeyAvailable) { continue }
         $k = [Console]::ReadKey($true)
 
         if ($k.Key -eq [ConsoleKey]::Escape) { Restore-UiAfterMenu $y0 $menuH; return $false }
@@ -1036,6 +1038,7 @@ function Show-OnOffMenu([string]$title, [bool]$currentValue) {
 
         while ($true) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
+            Invoke-MenuIdleTick
             if (-not [Console]::KeyAvailable) { continue }
             $k = [Console]::ReadKey($true)
 
@@ -1333,6 +1336,7 @@ $label = ($left.PadRight($leftW) + "  -  " + $items[$i].Desc)
 
         while ($true) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
+            Invoke-MenuIdleTick
             if (-not [Console]::KeyAvailable) { continue }
             $k = [Console]::ReadKey($true)
 
@@ -1565,6 +1569,7 @@ function Show-SettingsMenu {
 
         while ($true) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
+            Invoke-MenuIdleTick
             if (-not [Console]::KeyAvailable) { continue }
             $k = [Console]::ReadKey($true)
             if ($k.Key -eq [ConsoleKey]::Escape) {
@@ -2045,6 +2050,9 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
             $cursorY = $by + 3
             try { Set-UiCursorPosition $cursorX $cursorY } catch { }
 
+            Start-Sleep -Milliseconds $UI_ShortSleepMs
+            Invoke-MenuIdleTick
+            if (-not [Console]::KeyAvailable) { continue }
             $k = [Console]::ReadKey($true)
 
             if ($k.Key -eq [ConsoleKey]::Escape) {
@@ -2107,16 +2115,25 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
     $cursorFolder = _GetCursorFolderDisplay $items $selectedIndex
     _DrawFrame $cursorFolder
 
+        $needsRedraw = $true
+
     while ($true) {
 
-        $items = _GetItems
-        if ($selectedIndex -gt ($items.Count - 1)) { $selectedIndex = [Math]::Max(0, $items.Count - 1) }
-        if ($selectedIndex -lt 0) { $selectedIndex = 0 }
+        if ($needsRedraw) {
+            $items = _GetItems
+            if ($selectedIndex -gt ($items.Count - 1)) { $selectedIndex = [Math]::Max(0, $items.Count - 1) }
+            if ($selectedIndex -lt 0) { $selectedIndex = 0 }
 
-        $cursorFolder = _GetCursorFolderDisplay $items $selectedIndex
-        _DrawFrame $cursorFolder
-        _DrawList $items
+            $cursorFolder = _GetCursorFolderDisplay $items $selectedIndex
+            _DrawFrame $cursorFolder
+            _DrawList $items
 
+            $needsRedraw = $false
+        }
+
+        Start-Sleep -Milliseconds $UI_ShortSleepMs
+        Invoke-MenuIdleTick
+        if (-not [Console]::KeyAvailable) { continue }
         $k = [Console]::ReadKey($true)
 
         if ($k.Key -eq [ConsoleKey]::Escape) {
@@ -2127,12 +2144,14 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
         if ($k.Key -eq [ConsoleKey]::UpArrow) {
             $selectedIndex--
             if ($selectedIndex -lt 0) { $selectedIndex = 0 }
+            $needsRedraw = $true
             continue
         }
 
         if ($k.Key -eq [ConsoleKey]::DownArrow) {
             $selectedIndex++
             if ($selectedIndex -gt ($items.Count - 1)) { $selectedIndex = [Math]::Max(0, $items.Count - 1) }
+            $needsRedraw = $true
             continue
         }
 
@@ -2345,6 +2364,12 @@ function Restore-UiAfterMenu([int]$menuTop, [int]$menuHeight) {
     } finally {
         $script:UiOverlayActive = $prevOverlay
     }
+}
+
+function Invoke-MenuIdleTick {
+    # Keep file watching and output publishing active while an overlay menu is open.
+    # UI updates are suppressed automatically while $script:UiOverlayActive is $true.
+    try { Do-UpdateIfNeeded } catch { }
 }
 
 function Toggle-AsciiSafe {
