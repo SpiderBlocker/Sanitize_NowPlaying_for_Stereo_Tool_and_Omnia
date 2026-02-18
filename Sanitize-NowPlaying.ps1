@@ -28,7 +28,7 @@ try { [Console]::InputEncoding  = New-Object System.Text.UTF8Encoding($false) } 
 try { $OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.2"
+$ScriptVersion = "1.10.3"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -936,10 +936,13 @@ function Show-LanguageMenu {
 
     _DrawMenu
     while ($true) {
+                if (-not [Console]::KeyAvailable) {
         Start-Sleep -Milliseconds $UI_ShortSleepMs
         Invoke-MenuIdleTick
-        if (-not [Console]::KeyAvailable) { continue }
+        continue
+        }
         $k = [Console]::ReadKey($true)
+
 
         if ($k.Key -eq [ConsoleKey]::Escape) { Restore-UiAfterMenu $y0 $menuH; return $false }
 
@@ -1037,10 +1040,13 @@ function Show-OnOffMenu([string]$title, [bool]$currentValue) {
         _DrawMenu
 
         while ($true) {
+                        if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
-            if (-not [Console]::KeyAvailable) { continue }
+            continue
+            }
             $k = [Console]::ReadKey($true)
+
 
             if ($k.Key -eq [ConsoleKey]::Escape) { return $null }
             if ($k.Key -eq [ConsoleKey]::UpArrow) {
@@ -1335,10 +1341,13 @@ $label = ($left.PadRight($leftW) + "  -  " + $items[$i].Desc)
         _DrawMenu
 
         while ($true) {
+                        if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
-            if (-not [Console]::KeyAvailable) { continue }
+            continue
+            }
             $k = [Console]::ReadKey($true)
+
 
             if ($k.Key -eq [ConsoleKey]::Escape) { return $false }
             if ($k.Key -eq [ConsoleKey]::UpArrow)   { $selected = [Math]::Max(0, $selected - 1); _DrawMenu; continue }
@@ -1568,10 +1577,13 @@ function Show-SettingsMenu {
         _DrawMenu
 
         while ($true) {
+                        if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
-            if (-not [Console]::KeyAvailable) { continue }
+            continue
+            }
             $k = [Console]::ReadKey($true)
+
             if ($k.Key -eq [ConsoleKey]::Escape) {
                 # Cancel: restore original settings and re-apply runtime state.
                 $script:Settings.Clear()
@@ -1689,6 +1701,7 @@ $defaultDir = ''
         # NOTE: nested functions run in their own scope; update the parent variables explicitly.
         Set-Variable -Name lastMsg -Scope 1 -Value $m
         Set-Variable -Name toastPending -Scope 1 -Value (-not [string]::IsNullOrWhiteSpace($m))
+        Set-Variable -Name needsRedraw  -Scope 1 -Value $true
     }
 
     function _FrameLine([string]$text) {
@@ -2050,10 +2063,13 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
             $cursorY = $by + 3
             try { Set-UiCursorPosition $cursorX $cursorY } catch { }
 
+                        if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
-            if (-not [Console]::KeyAvailable) { continue }
+            continue
+            }
             $k = [Console]::ReadKey($true)
+
 
             if ($k.Key -eq [ConsoleKey]::Escape) {
                 try { [Console]::CursorVisible = $false } catch { }
@@ -2131,10 +2147,13 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
             $needsRedraw = $false
         }
 
+                if (-not [Console]::KeyAvailable) {
         Start-Sleep -Milliseconds $UI_ShortSleepMs
         Invoke-MenuIdleTick
-        if (-not [Console]::KeyAvailable) { continue }
+        continue
+        }
         $k = [Console]::ReadKey($true)
+
 
         if ($k.Key -eq [ConsoleKey]::Escape) {
             try { Restore-UiAfterMenu $y0 $menuH } catch { }
@@ -2184,6 +2203,7 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
                 $currentDir = $target
                 $selectedIndex = 0
                 _SetMsg "Folder created"
+                        $needsRedraw = $true
             } catch {
                 _SetMsg "Unable to create folder"
             }
@@ -2279,6 +2299,7 @@ try { $picked = (Resolve-Path -LiteralPath $picked -ErrorAction Stop).Path } cat
                         $currentDir = $parentPath
                         $selectedIndex = 0
                         $lastMsg = ""
+                        $needsRedraw = $true
                     }
                 } catch {
                     _SetMsg "Unable to open parent folder"
@@ -2293,6 +2314,7 @@ try { $picked = (Resolve-Path -LiteralPath $picked -ErrorAction Stop).Path } cat
                 $currentDir = $target
                 $selectedIndex = 0
                 $lastMsg = ""
+                        $needsRedraw = $true
             } else {
                 _SetMsg "Folder not found"
             }
