@@ -27,8 +27,86 @@ try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } 
 try { [Console]::InputEncoding  = New-Object System.Text.UTF8Encoding($false) } catch { }
 try { $OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
+
+# -------------------- Shutdown flush (host-independent) -----------------------
+# Uses a native Console Control Handler (CTRL+C, close button, ALT+F4, logoff/shutdown) to hard-truncate
+# the output files as a last-resort, even when PowerShell finally blocks are not executed (e.g., ps2exe).
+# The handler performs only .NET file truncation and never calls back into PowerShell (thread-safe).
+
+try {
+    Add-Type -Language CSharp -TypeDefinition @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public static class NativeExitFlush
+{
+    private delegate bool HandlerRoutine(int ctrlType);
+
+    [DllImport("Kernel32.dll", SetLastError=true)]
+    private static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
+
+    // Volatile references to the active output paths.
+    private static volatile string _prefix;
+    private static volatile string _rt;
+    private static volatile string _rtp;
+
+    private static int _installed;
+    private static readonly HandlerRoutine _handler = new HandlerRoutine(Handle);
+
+    public static void Install()
+    {
+        if (Interlocked.Exchange(ref _installed, 1) != 0) return;
+        try { SetConsoleCtrlHandler(_handler, true); } catch { }
+        // Extra safety net: flush on normal process exit as well.
+        try { AppDomain.CurrentDomain.ProcessExit += (s, e) => Flush(); } catch { }
+    }
+
+    public static void Update(string prefix, string rt, string rtp)
+    {
+        _prefix = prefix;
+        _rt     = rt;
+        _rtp    = rtp;
+    }
+
+    public static void Flush()
+    {
+        TryTruncate(_prefix);
+        TryTruncate(_rt);
+        TryTruncate(_rtp);
+    }
+
+    private static void TryTruncate(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            // FileShare.ReadWrite: avoid unnecessary failures when another process has the file open in shared mode.
+            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            {
+                fs.Flush(true);
+            }
+        }
+        catch { }
+    }
+
+    private static bool Handle(int ctrlType)
+    {
+        // Always attempt flush, but do not "handle" the event.
+        // Returning false lets PowerShell's CancelKeyPress/finally logic run when available,
+        // while still ensuring the outputs are truncated for hard termination scenarios.
+        Flush();
+        return false;
+    }
+}
+"@ -ErrorAction Stop
+} catch { }
+
+try { [NativeExitFlush]::Install() } catch { }
+
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.3"
+$ScriptVersion = "1.10.4"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -241,6 +319,9 @@ function Set-WorkDirPaths([string]$dir) {
     $script:OutFileRt    = $OutFileRt
     $OutFileRtPlus       = Join-Path $dir 'nowplaying_rtplus.txt'
     $script:OutFileRtPlus = $OutFileRtPlus
+
+    try { [NativeExitFlush]::Update($script:PrefixFile, $script:OutFileRt, $script:OutFileRtPlus) } catch { }
+
 }
 
 function Apply-WorkDirIfConfigured {
@@ -5900,6 +5981,8 @@ try {
     }
 } finally {
     try { [Console]::CursorVisible = $true } catch { }
+
+    try { Clear-OutputsFast } catch { }
 
     try {
         if ($script:fsw) {
