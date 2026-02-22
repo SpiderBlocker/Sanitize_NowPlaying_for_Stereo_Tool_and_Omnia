@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.4"
+$ScriptVersion = "1.10.5"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -2955,7 +2955,7 @@ function Draw-Header {
     Write-At 0 ($script:HeaderTop + 0) $t0 $script:BaseFg $true
     Write-At 0 ($script:HeaderTop + 1) ""  $script:BaseFg $true
     $tsA = "Watching   "
-    $tsB = "Writing    "
+    $tsB = "Writing to "
     $sep = ": "
 
     $labIn = "INPUT       "
