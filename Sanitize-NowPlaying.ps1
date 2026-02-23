@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.5"
+$ScriptVersion = "1.10.6"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -2954,7 +2954,7 @@ function Draw-Header {
 
     Write-At 0 ($script:HeaderTop + 0) $t0 $script:BaseFg $true
     Write-At 0 ($script:HeaderTop + 1) ""  $script:BaseFg $true
-    $tsA = "Watching   "
+    $tsA = "Monitoring "
     $tsB = "Writing to "
     $sep = ": "
 
@@ -3580,6 +3580,9 @@ function AsciiSafe-FinalPass([string]$s) {
 
     $t = $t.Replace("Đ", "D").Replace("đ", "d")
     $t = $t.Replace("Ĳ", "IJ").Replace("ĳ", "ij")
+$t = $t.Replace("Ǆ", "DZ").Replace("ǅ", "Dz").Replace("ǆ", "dz")
+$t = $t.Replace("Ǉ", "LJ").Replace("ǈ", "Lj").Replace("ǉ", "lj")
+$t = $t.Replace("Ǌ", "NJ").Replace("ǋ", "Nj").Replace("ǌ", "nj")
     $t = $t.Replace("ı", "i")
 
     # Normalize common Unicode punctuation to ASCII equivalents (helps avoid losing dashes/quotes in ASCII-safe mode).
@@ -3747,7 +3750,7 @@ function Filter-ToRdsLatin([string]$s) {
 
     # Transliteration is enabled: drop combining marks and keep a conservative "Latin-ish" repertoire.
     $t = [regex]::Replace($s, "\p{M}+", "")
-    $t = [regex]::Replace($t, "[^\x20-\x7E\u00A1-\u00FF\u0100-\u017F]", "")
+    $t = [regex]::Replace($t, "[^\x20-\x7E\u00A1-\u00FF\u0100-\u017F\u0180-\u024F]", "")
     return (Cleanup-Whitespace $t)
 }
 
