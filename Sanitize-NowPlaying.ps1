@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.7"
+$ScriptVersion = "1.10.8"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -2731,6 +2731,11 @@ function Redraw-Ui {
 
     $script:UiInited = $false
     Ensure-UiFresh
+
+    if (-not [string]::IsNullOrEmpty($script:LastInLine))   { Write-At 0 ($script:StatusTop + 1) $script:LastInLine $script:LastInFg $true }
+    if (-not [string]::IsNullOrEmpty($script:LastPxLine))   { Write-At 0 ($script:StatusTop + 2) $script:LastPxLine $script:LastPxFg $true }
+    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine)) { Write-At 0 ($script:StatusTop + 3) $script:LastOutRtLine $script:LastRtFg $true }
+    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine)) { Write-At 0 ($script:StatusTop + 4) $script:LastOutRpLine $script:LastRpFg $true }
 }
 
 function Write-MenuHeaderLine([int]$x0, [int]$y, [int]$menuW, [string]$text) {
@@ -5033,14 +5038,14 @@ function Fit-ArtistPreserveTitle([string]$artistOriginal, [string]$artistCandida
 
     if (-not [string]::IsNullOrWhiteSpace($minDesiredArtist)) {
         if (Looks-LikeMultiArtist $artistOriginal) {
-            $minDesiredArtist = (Cleanup-Whitespace ($minDesiredArtist + "..."))
+            $minDesiredArtist = (Cleanup-Whitespace ($minDesiredArtist + ""))
         }
         if ($roomForArtist -lt $minDesiredArtist.Length) {
             return $null
         }
     }
 
-    $suffix = "..."
+    $suffix = ""
     $wantSuffix = (Looks-LikeMultiArtist $artistOriginal)
 
     $artistBudget = $roomForArtist
@@ -5236,7 +5241,7 @@ function Smart-Truncate-Fields([string]$artist, [string]$title, [int]$maxLen, [s
 
         $candidates = @()
         if (-not [string]::IsNullOrWhiteSpace($firstArtist)) {
-            $candidates += (Cleanup-Whitespace ($firstArtist + "..."))
+            $candidates += (Cleanup-Whitespace ($firstArtist + ""))
             $candidates += $firstArtist
         }
 
