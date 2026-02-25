@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.8"
+$ScriptVersion = "1.10.9"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -2732,10 +2732,31 @@ function Redraw-Ui {
     $script:UiInited = $false
     Ensure-UiFresh
 
-    if (-not [string]::IsNullOrEmpty($script:LastInLine))   { Write-At 0 ($script:StatusTop + 1) $script:LastInLine $script:LastInFg $true }
-    if (-not [string]::IsNullOrEmpty($script:LastPxLine))   { Write-At 0 ($script:StatusTop + 2) $script:LastPxLine $script:LastPxFg $true }
-    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine)) { Write-At 0 ($script:StatusTop + 3) $script:LastOutRtLine $script:LastRtFg $true }
-    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine)) { Write-At 0 ($script:StatusTop + 4) $script:LastOutRpLine $script:LastRpFg $true }
+    $tsPart  = ""
+    if ($script:LastInLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s") { $tsPart = $matches[0] }
+    $sepPart = ": "
+
+    $labIn = "INPUT       "
+    $labPx = "PREFIX OUT  "
+    $labRt = "OUTPUT RT   "
+    $labRp = "OUTPUT RT+  "
+
+    $inVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastInLine) -and ($script:LastInLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $inVal = $matches[1] }
+
+    $pxVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastPxLine) -and ($script:LastPxLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $pxVal = $matches[1] }
+
+    $rtVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine) -and ($script:LastOutRtLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $rtVal = $matches[1] }
+
+    $rpVal = ""
+    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine) -and ($script:LastOutRpLine -match "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+.+?\s+:\s*(.*)$")) { $rpVal = $matches[1] }
+
+    if (-not [string]::IsNullOrEmpty($script:LastInLine))    { try { Write-SegmentedLine 0 ($script:StatusTop + 1) $tsPart $script:BaseFg $labIn $script:LastInFg $sepPart $script:BaseFg $inVal   $script:LastInFg $true } catch { } }
+    if (-not [string]::IsNullOrEmpty($script:LastPxLine))    { try { Write-SegmentedLine 0 ($script:StatusTop + 2) $tsPart $script:BaseFg $labPx $script:LastPxFg $sepPart $script:BaseFg $pxVal  $script:LastPxFg $true } catch { } }
+    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine)) { try { Write-SegmentedLine 0 ($script:StatusTop + 3) $tsPart $script:BaseFg $labRt $script:LastRtFg $sepPart $script:BaseFg $rtVal     $script:LastRtFg $true } catch { } }
+    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine)) { try { Write-SegmentedLine 0 ($script:StatusTop + 4) $tsPart $script:BaseFg $labRp $script:LastRpFg $sepPart $script:BaseFg $rpVal $script:LastRpFg $true } catch { } }
 }
 
 function Write-MenuHeaderLine([int]$x0, [int]$y, [int]$menuW, [string]$text) {
