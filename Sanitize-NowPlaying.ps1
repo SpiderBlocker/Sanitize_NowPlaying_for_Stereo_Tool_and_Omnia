@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.6"
+$ScriptVersion = "1.10.7"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -2731,11 +2731,6 @@ function Redraw-Ui {
 
     $script:UiInited = $false
     Ensure-UiFresh
-
-    if (-not [string]::IsNullOrEmpty($script:LastInLine))   { Write-At 0 ($script:StatusTop + 1) $script:LastInLine $script:LastInFg $true }
-    if (-not [string]::IsNullOrEmpty($script:LastPxLine))   { Write-At 0 ($script:StatusTop + 2) $script:LastPxLine $script:LastPxFg $true }
-    if (-not [string]::IsNullOrEmpty($script:LastOutRtLine)) { Write-At 0 ($script:StatusTop + 3) $script:LastOutRtLine $script:LastRtFg $true }
-    if (-not [string]::IsNullOrEmpty($script:LastOutRpLine)) { Write-At 0 ($script:StatusTop + 4) $script:LastOutRpLine $script:LastRpFg $true }
 }
 
 function Write-MenuHeaderLine([int]$x0, [int]$y, [int]$menuW, [string]$text) {
@@ -3142,10 +3137,10 @@ function Render-SettingsAndLegend {
     $xExit = [Math]::Max(0, $w2 - $exitHint.Length - 1)
 
     # Hotkey hints are low-priority UI chrome. Keep the words dimmed, but show the actual key chords in bright white.
-    Write-At $xExit ($script:StatusTop + 9) "F10" ($UI_Color_BrightText)
+    Write-At $xExit ($script:StatusTop + 9) "F10" ($UI_Color_InputText)
     Write-At ($xExit + 3) ($script:StatusTop + 9) " Settings" ($UI_Color_DimText)
     Write-At ($xExit + 12) ($script:StatusTop + 9) "   " ($UI_Color_DimText)
-    Write-At ($xExit + 15) ($script:StatusTop + 9) "CTRL+C" ($UI_Color_BrightText)
+    Write-At ($xExit + 15) ($script:StatusTop + 9) "CTRL+C" ($UI_Color_InputText)
     Write-At ($xExit + 21) ($script:StatusTop + 9) " Exit" ($UI_Color_DimText)
 
     # Clear unused legacy rows (kept for layout stability in smaller windows).
@@ -3950,17 +3945,36 @@ function Get-CountryPrefixRegex() {
     # Prefer longer matches first (avoids partial matches when one name is a prefix of another).
     $arr = $arr | Sort-Object { $_.Length } -Descending
 
-    $alts = @()
-    foreach ($n in $arr) { $alts += [regex]::Escape($n) }
+    $altsLong = @()
+    $altsIso2 = @()
+    foreach ($n in $arr) {
+        if ([string]::IsNullOrWhiteSpace($n)) { continue }
+        $x = $n.Trim()
 
-    if ($alts.Count -eq 0) {
+        # ISO2 codes are only stripped in an unmistakable metadata form (uppercase + clear separators).
+        if ($x -match '^[A-Za-z]{2}$') {
+            $altsIso2 += [regex]::Escape($x.ToUpperInvariant())
+        } else {
+            $altsLong += [regex]::Escape($x)
+        }
+    }
+
+    if (($altsLong.Count + $altsIso2.Count) -eq 0) {
         # Fallback: nothing to match.
         $script:_CountryPrefixRegex = [regex]'(?!)'
         return $script:_CountryPrefixRegex
     }
 
-    $pattern = "^(?<cc>(?:$($alts -join '|')))\s*[-–—:]\s*(?<rest>.+)$"
-    $script:_CountryPrefixRegex = New-Object System.Text.RegularExpressions.Regex($pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($altsLong.Count -gt 0 -and $altsIso2.Count -gt 0) {
+        $pattern = "^(?:(?<cc>(?:$($altsLong -join '|')))\s*[-–—:]\s*(?<rest>.+)|(?<cc>(?-i:(?:$($altsIso2 -join '|'))))\s+[-–—:]\s+(?<rest>.+))$"
+        $script:_CountryPrefixRegex = New-Object System.Text.RegularExpressions.Regex($pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    } elseif ($altsLong.Count -gt 0) {
+        $pattern = "^(?<cc>(?:$($altsLong -join '|')))\s*[-–—:]\s*(?<rest>.+)$"
+        $script:_CountryPrefixRegex = New-Object System.Text.RegularExpressions.Regex($pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    } else {
+        $pattern = "^(?<cc>(?-i:(?:$($altsIso2 -join '|'))))\s+[-–—:]\s+(?<rest>.+)$"
+        $script:_CountryPrefixRegex = New-Object System.Text.RegularExpressions.Regex($pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    }
     return $script:_CountryPrefixRegex
 }
 
@@ -4036,6 +4050,8 @@ function Strip-CountrySuffix([string]$s) {
     if ($m3.Success) {
         $name3 = Cleanup-Whitespace $m3.Groups["name"].Value
         $tag3  = Cleanup-Whitespace $m3.Groups["tag"].Value
+
+        if ($tag3 -match '^[A-Za-z]{2}$' -and $tag3 -cne $tag3.ToUpperInvariant()) { return $t }
 
         if (-not [string]::IsNullOrWhiteSpace($name3) -and (Test-IsCountryToken $tag3)) {
             return $name3
