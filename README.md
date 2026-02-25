@@ -2,7 +2,7 @@
 
 Lightweight PowerShell tool that cleans and normalizes nowplaying.txt metadata for reliable RDS RadioText (RT and RT+).
 
-Designed for hobby and semi-professional FM stations that want clean, broadcast-ready RDS RadioText with minimal manual library tagging.
+Designed for small and semi-professional FM stations that want clean, broadcast-ready RDS RadioText with minimal manual library tagging.
 
 This project was created through iterative co-development with ChatGPT 5.2, combining AI-assisted development with hands-on design, testing, and optimizations.
 
