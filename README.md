@@ -15,6 +15,7 @@ This project was created through iterative co-development with ChatGPT 5.2, comb
 - Adaptive trimming to the RDS 64-character limit with priority-based shortening for optimal readability
 - Optional transliteration (Greek/Cyrillic) and ASCII-safe mode
 - Clean output for RT and RT+ (artist/title tagging)
+- Automatic flush on exit to clear output files, allowing Stereo Tool to skip processing and preventing stale data
 - Multilingual “Now playing” prefix
 - Configurable (including custom) field delimiter
 - Color console UI with status view and F10 settings menu
