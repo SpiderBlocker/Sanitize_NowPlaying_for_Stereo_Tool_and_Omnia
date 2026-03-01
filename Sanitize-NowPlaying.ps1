@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.9"
+$ScriptVersion = "1.10.10"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -466,9 +466,8 @@ function Apply-DelimiterFromSettings {
                 if ($script:Settings -and $script:Settings.ContainsKey('DelimiterCustom')) { $custom = [string]$script:Settings.DelimiterCustom }
             } catch { $custom = '' }
             if ($null -eq $custom) { $custom = '' }
-            $custom = $custom.Trim()
 
-            if ([string]::IsNullOrEmpty($custom)) {
+            if ([string]::IsNullOrWhiteSpace($custom)) {
                 # Invalid / empty custom delimiter -> fall back to the default.
                 $script:DelimiterKey = 'U241F'
                 $script:SepChar  = [char]0x241F
@@ -487,6 +486,19 @@ function Apply-DelimiterFromSettings {
     $global:SepGlyph = $script:SepGlyph
 }
 
+
+function Format-DelimiterForDisplay {
+    param([string]$delim)
+
+    if ($null -eq $delim) { return "" }
+
+    # TAB is a dedicated built-in option. Keep it as a clear label.
+    if ($delim -eq "`t" -or $delim -eq "TAB") { return "TAB" }
+
+    # Visualize spaces as open box (␣ U+2423) for clarity.
+    return $delim.Replace(" ", [char]0x2423)
+}
+
 function Save-DelimiterSetting {
     if (-not $script:Settings) { return }
 
@@ -502,13 +514,12 @@ function Save-DelimiterSetting {
         } catch { $custom = '' }
 
         if ($null -eq $custom) { $custom = '' }
-        $custom = $custom.Trim()
 
-        if ([string]::IsNullOrEmpty($custom)) {
+        if ([string]::IsNullOrWhiteSpace($custom)) {
             # Fall back to the current runtime delimiter (best effort).
             try { $custom = [string]$script:SepChar } catch { $custom = '' }
             if ($null -eq $custom) { $custom = '' }
-            $custom = $custom.Trim()
+            
         }
 
         $script:Settings.DelimiterCustom = $custom
@@ -1020,6 +1031,11 @@ function Show-LanguageMenu {
                 if (-not [Console]::KeyAvailable) {
         Start-Sleep -Milliseconds $UI_ShortSleepMs
         Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
         continue
         }
         $k = [Console]::ReadKey($true)
@@ -1124,6 +1140,11 @@ function Show-OnOffMenu([string]$title, [bool]$currentValue) {
                         if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
             continue
             }
             $k = [Console]::ReadKey($true)
@@ -1169,13 +1190,11 @@ function Show-DelimiterMenu {
         $curCustom = ''
         try { if ($script:Settings -and $script:Settings.ContainsKey('DelimiterCustom')) { $curCustom = [string]$script:Settings.DelimiterCustom } } catch { $curCustom = '' }
         if ($null -eq $curCustom) { $curCustom = '' }
-        $curCustom = $curCustom.Trim()
-
-        # Display is formatted in two aligned columns for readability.
+                # Display is formatted in two aligned columns for readability.
         $items = @(
             @{ Key = "U241F";  Glyph = "␟";    CodeLabel = "U+241F"; Desc = "recommended" }
             @{ Key = "TAB";    Glyph = "TAB";  CodeLabel = "U+0009"; Desc = "usually safe" }
-            @{ Key = "CUSTOM"; Glyph = $(if ($curCustom) { $curCustom } else { "" }); CodeLabel = "custom";  Desc = "enter custom playout delimiter" }
+            @{ Key = "CUSTOM"; Glyph = $(if ($curCustom) { if ($curCustom -eq "`t") { "TAB" } else { $curCustom.Replace(" ", [char]0x2423).Replace("`t", [char]0x2409) } } else { "" }); CodeLabel = "custom";  Desc = "enter custom playout delimiter" }
         )
 
         $menuW = [Math]::Min($winW - 4, 60)
@@ -1335,13 +1354,13 @@ function _PromptCustomDelimiter([string]$initialValue) {
             while ($true) {
                 if ($warnText -and (Get-Date) -gt $warnUntil) { $warnText = "" }
                 $hasOverflow = $false
-                $show = $buf
+                $show = (Format-DelimiterForDisplay $buf)
                 _DrawInputBox $show -HasOverflow:$hasOverflow -WarningText:$warnText
 
                 $k = [Console]::ReadKey($true)
                 if ($k.Key -eq [ConsoleKey]::Escape) { return $null }
                 if ($k.Key -eq [ConsoleKey]::Enter) {
-                    $val = $buf.Trim()
+                    $val = $buf
                     if ([string]::IsNullOrWhiteSpace($val)) { return $null }
                     if ($val.Length -gt $MaxCustomDelimiterLen) { $val = $val.Substring(0, $MaxCustomDelimiterLen) }
                     return $val
@@ -1425,6 +1444,11 @@ $label = ($left.PadRight($leftW) + "  -  " + $items[$i].Desc)
                         if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
             continue
             }
             $k = [Console]::ReadKey($true)
@@ -1462,8 +1486,7 @@ $label = ($left.PadRight($leftW) + "  -  " + $items[$i].Desc)
 
                 # Copy to clipboard + toast (always, even when the selection didn't change).
                 $clipText = [string]$script:SepChar
-                $toastText = $clipText
-                if ($clipText -eq "`t") { $toastText = "TAB" }
+                $toastText = (Format-DelimiterForDisplay $clipText)
                 if (_CopyToClipboard $clipText) {
                     _ShowToast ("[{0}] copied to clipboard" -f $toastText)
                 } else {
@@ -1618,7 +1641,7 @@ function Show-SettingsMenu {
                     }
                 } elseif ($kind -eq 'sep') {
                     $leftText  = "Playout delimiter"
-                    $valueText = "[" + $global:SepGlyph + "]"
+                    $valueText = "[" + (Format-DelimiterForDisplay $global:SepGlyph) + "]"
                 }
 
                 $text = _FormatMenuLine $leftText $valueText
@@ -1661,6 +1684,11 @@ function Show-SettingsMenu {
                         if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
             continue
             }
             $k = [Console]::ReadKey($true)
@@ -1701,11 +1729,6 @@ function Show-SettingsMenu {
 
                 if ($kind -eq 'workdir') {
                     $changed = Show-WorkDirMenu
-                    if ($changed) {
-                        try { Apply-WorkDirIfConfigured } catch { }
-                        try { Draw-Header } catch { }
-                        $script:RebuildWatcher = $true
-                    }
                 } elseif ($kind -eq 'prefix') {
                     $changed = Show-LanguageMenu
                 } elseif ($kind -eq 'ascii') {
@@ -1746,7 +1769,7 @@ function Show-WorkDirMenu([switch]$MarkWizardDone) {
         # Interactive working-directory picker (arrow keys + Enter).
         # Item 1 selects the current folder, item 2 goes to parent, remaining items enter subfolders.
 
-        $menuW = 86
+        $menuW = 91
         $menuH = [Math]::Max(16, [Math]::Min(22, [Console]::WindowHeight - 4))
 
         $x0 = [Math]::Max(0, [Math]::Floor((([Console]::WindowWidth - $script:UiOffsetX - $script:UiRightMargin) - $menuW) / 2))
@@ -1773,7 +1796,7 @@ $defaultDir = ''
     $listTopY = $y0 + 3 + $infoLines + 2
     $promptY  = $listTopY + $listLines - 1
     $title = "Set working directory"
-    $help1 = "Up/Down: navigate   Enter: open/select   N: new folder   Esc: cancel"
+    $help1 = "Up/Down: navigate   Enter: open/select   V: select volume   N: new folder   Esc: cancel"
     # (no second header line)
     $selectedIndex = 0
     $lastMsg = ""
@@ -1898,6 +1921,26 @@ Write-At $x0 ($listTopY + $listLines) ("└" + ("─" * ($menuW - 2)) + "┘") (
         # Virtual helper entry (first item when shown):
         # If the configured folder from settings does not exist anymore) offer that path for explicit creation.
         # Otherwise (first-run, offer creation of the default folder (derived from the input file location).
+
+        # Build a drive-aware default folder suggestion:
+        # If the user navigated to another volume, offer "\<defaultSubPath>" on that volume (e.g. D:\RDS),
+        # instead of always offering the original defaultDir (often C:\RDS).
+        $defaultCreateDir = $defaultDir
+        try {
+            $root = [System.IO.Path]::GetPathRoot($currentDir)
+            if (-not [string]::IsNullOrWhiteSpace($root)) {
+                $rel = ""
+                try { $rel = Split-Path -Path $defaultDir -NoQualifier } catch { $rel = "" }
+                if (-not [string]::IsNullOrWhiteSpace($rel)) { $rel = $rel.TrimStart('\') }
+                if ([string]::IsNullOrWhiteSpace($rel)) {
+                    try { $rel = Split-Path -Path $defaultDir -Leaf } catch { $rel = "" }
+                }
+                if (-not [string]::IsNullOrWhiteSpace($rel)) {
+                    $defaultCreateDir = Join-Path $root $rel
+                }
+            }
+        } catch { }
+
         $createTarget = $null
         try {
             $cfg = "$($script:Settings.WorkDir)".Trim()
@@ -1905,11 +1948,11 @@ Write-At $x0 ($listTopY + $listLines) ("└" + ("─" * ($menuW - 2)) + "┘") (
         } catch { }
 
         if (-not $createTarget) {
-            try { if (-not (Test-Path -LiteralPath $defaultDir)) { $createTarget = $defaultDir } } catch { }
+            try { if (-not (Test-Path -LiteralPath $defaultCreateDir)) { $createTarget = $defaultCreateDir } } catch { }
         }
 
         if ($createTarget) {
-            if ($createTarget -eq $defaultDir) {
+            if ($createTarget -eq $defaultCreateDir) {
                 [void]$items.Add("[Create default folder: $createTarget]")
             } else {
                 [void]$items.Add("[Create folder: $createTarget]")
@@ -2147,6 +2190,11 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
                         if (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds $UI_ShortSleepMs
             Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
             continue
             }
             $k = [Console]::ReadKey($true)
@@ -2176,6 +2224,172 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
         }
     }
 
+
+
+function _PromptSelectVolume {
+    # Modal overlay volume picker.
+    # Returns the selected drive root (e.g. "D:\"), or $null when cancelled.
+
+    $drives = @()
+    try {
+        foreach ($d in [System.IO.DriveInfo]::GetDrives()) {
+            try {
+                if (-not $d.IsReady) { continue }
+                $root = $d.RootDirectory.FullName
+                if ([string]::IsNullOrWhiteSpace($root)) { continue }
+
+                $type = ""
+                try { $type = [string]$d.DriveType } catch { $type = "" }
+                $label = ""
+                try { $label = [string]$d.VolumeLabel } catch { $label = "" }
+
+                $display = $root
+                if (-not [string]::IsNullOrWhiteSpace($label)) {
+                    $display = ("{0} ({1})" -f $root, $label)
+                } elseif (-not [string]::IsNullOrWhiteSpace($type)) {
+                    $display = ("{0} ({1})" -f $root, $type)
+                }
+
+                $drives += [pscustomobject]@{ Root = $root; Display = $display }
+            } catch { }
+        }
+    } catch { $drives = @() }
+
+    if ($drives.Count -le 0) {
+        _SetMsg "No volumes found"
+        return $null
+    }
+
+    $maxVisible = 10
+    $listCount = [Math]::Min($maxVisible, $drives.Count)
+
+    $boxW = [Math]::Min(62, [Math]::Max(42, $menuW - 14))
+    $boxH = 8 + $listCount   # top, title/help, sep, list, bottom
+
+    $bx = $x0 + [int](($menuW - $boxW) / 2)
+    $by = $y0 + [int](($menuH - $boxH) / 2)
+    if ($by -lt ($y0 + 3)) { $by = $y0 + 3 }
+
+    $sel = 0
+    $top = 0
+
+    function _DrawVolBox {
+        Write-At $bx $by       ("┌" + ("─" * ($boxW - 2)) + "┐") ($UI_Color_MenuFrame)
+
+        $innerW = $boxW - 4
+        $titleLine = "Select volume"
+        $helpLine  = "Up/Down: move   Enter: select   Esc: cancel"
+
+        With-ConsoleColor ($UI_Color_MenuFrame) ($UI_Color_Background) {
+            Set-UiCursorPosition $bx ($by + 1)
+            [Console]::Write("│ ")
+        }
+        With-ConsoleColor ($UI_Color_DimText) ($UI_Color_Background) {
+            Set-UiCursorPosition ($bx + 2) ($by + 1)
+            $t = $titleLine
+            if ($t.Length -gt $innerW) { $t = $t.Substring(0, $innerW) }
+            [Console]::Write($t.PadRight($innerW))
+        }
+        With-ConsoleColor ($UI_Color_MenuFrame) ($UI_Color_Background) {
+            Set-UiCursorPosition ($bx + $boxW - 2) ($by + 1)
+            [Console]::Write(" │")
+        }
+
+        With-ConsoleColor ($UI_Color_MenuFrame) ($UI_Color_Background) {
+            Set-UiCursorPosition $bx ($by + 2)
+            [Console]::Write("│ ")
+        }
+        With-ConsoleColor ($UI_Color_DimText) ($UI_Color_Background) {
+            Set-UiCursorPosition ($bx + 2) ($by + 2)
+            $h = $helpLine
+            if ($h.Length -gt $innerW) { $h = $h.Substring(0, $innerW) }
+            [Console]::Write($h.PadRight($innerW))
+        }
+        With-ConsoleColor ($UI_Color_MenuFrame) ($UI_Color_Background) {
+            Set-UiCursorPosition ($bx + $boxW - 2) ($by + 2)
+            [Console]::Write(" │")
+        }
+
+        Write-At $bx ($by + 3) ("├" + ("─" * ($boxW - 2)) + "┤") ($UI_Color_MenuFrame)
+
+        # List
+        $innerWList = $boxW - 4
+        for ($i = 0; $i -lt $listCount; $i++) {
+            $idx = $top + $i
+            $text = ""
+            if ($idx -lt $drives.Count) { $text = [string]$drives[$idx].Display }
+            if ($text.Length -gt $innerWList) { $text = $text.Substring(0, $innerWList - 3) + "..." }
+            $line = $text.PadRight($innerWList)
+
+            $fg = $UI_Color_InputText
+            $bg = $UI_Color_Background
+            if ($idx -eq $sel) {
+                $fg = $UI_Color_SelectedText
+                $bg = $UI_Color_SelectedBack
+            }
+
+            With-ConsoleColor ($UI_Color_MenuFrame) ($UI_Color_Background) {
+                Set-UiCursorPosition $bx ($by + 4 + $i)
+                [Console]::Write("│ ")
+            }
+            With-ConsoleColor $fg $bg {
+                Set-UiCursorPosition ($bx + 2) ($by + 4 + $i)
+                [Console]::Write($line)
+            }
+            With-ConsoleColor ($UI_Color_MenuFrame) ($UI_Color_Background) {
+                Set-UiCursorPosition ($bx + $boxW - 2) ($by + 4 + $i)
+                [Console]::Write(" │")
+            }
+        }
+
+        Write-At $bx ($by + 4 + $listCount) ("└" + ("─" * ($boxW - 2)) + "┘") ($UI_Color_MenuFrame)
+    }
+
+    _DrawVolBox
+
+    while ($true) {
+        if (-not [Console]::KeyAvailable) {
+            Start-Sleep -Milliseconds $UI_ShortSleepMs
+            Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
+            continue
+        }
+        $k = [Console]::ReadKey($true)
+
+        if ($k.Key -eq [ConsoleKey]::Escape) { return $null }
+
+        if ($k.Key -eq [ConsoleKey]::UpArrow) {
+            $sel--
+            if ($sel -lt 0) { $sel = 0 }
+            if ($sel -lt $top) { $top = $sel }
+            _DrawVolBox
+            continue
+        }
+
+        if ($k.Key -eq [ConsoleKey]::DownArrow) {
+            $sel++
+            if ($sel -gt ($drives.Count - 1)) { $sel = [Math]::Max(0, $drives.Count - 1) }
+            if ($sel -ge ($top + $listCount)) { $top = $sel - ($listCount - 1) }
+            if ($top -lt 0) { $top = 0 }
+            if ($top -gt [Math]::Max(0, $drives.Count - $listCount)) { $top = [Math]::Max(0, $drives.Count - $listCount) }
+            _DrawVolBox
+            continue
+        }
+
+        if ($k.Key -eq [ConsoleKey]::Enter) {
+            if ($drives.Count -le 0) { return $null }
+            $root = [string]$drives[$sel].Root
+            if ([string]::IsNullOrWhiteSpace($root)) { return $null }
+            if (-not (Test-Path -LiteralPath $root)) { return $null }
+            try { $root = (Resolve-Path -LiteralPath $root -ErrorAction Stop).Path } catch { }
+            return $root
+        }
+    }
+}
     function _GetCursorFolderDisplay($items, [int]$idx) {
         try {
             if ($null -eq $items -or $items.Count -le 0) {
@@ -2231,6 +2445,11 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
                 if (-not [Console]::KeyAvailable) {
         Start-Sleep -Milliseconds $UI_ShortSleepMs
         Invoke-MenuIdleTick
+            if ($script:OverlayNeedsRedraw) {
+                $script:OverlayNeedsRedraw = $false
+                try { [Console]::CursorVisible = $false } catch { }
+                try { _DrawMenu } catch { }
+            }
         continue
         }
         $k = [Console]::ReadKey($true)
@@ -2251,6 +2470,23 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
         if ($k.Key -eq [ConsoleKey]::DownArrow) {
             $selectedIndex++
             if ($selectedIndex -gt ($items.Count - 1)) { $selectedIndex = [Math]::Max(0, $items.Count - 1) }
+            $needsRedraw = $true
+            continue
+        }
+
+
+        if ($k.Key -eq [ConsoleKey]::V) {
+
+            $root = _PromptSelectVolume
+            if (-not [string]::IsNullOrWhiteSpace($root)) {
+                $currentDir = $root
+                $selectedIndex = 0
+                $lastMsg = ""
+                $toastPending = $false
+            }
+
+            # Always redraw after closing the modal overlay (also on cancel),
+            # otherwise the overlay remains visually on screen until the next repaint.
             $needsRedraw = $true
             continue
         }
@@ -2333,9 +2569,7 @@ function _DrawList([System.Collections.Generic.List[string]]$items) {
                 $script:Settings.WorkDir = $picked
                 if ($MarkWizardDone) { $script:Settings.WorkDirWizardDone = $true }
                 Save-Settings
-                Apply-WorkDirIfConfigured
 
-                try { Refresh-UiAfterSettingChange } catch { }
                 try { Restore-UiAfterMenu $y0 $menuH } catch { }
 
                 return $changed
@@ -2364,9 +2598,7 @@ try { $picked = (Resolve-Path -LiteralPath $picked -ErrorAction Stop).Path } cat
                 $script:Settings.WorkDir = $picked
                 if ($MarkWizardDone) { $script:Settings.WorkDirWizardDone = $true }
                 Save-Settings
-                Apply-WorkDirIfConfigured
 
-                try { Refresh-UiAfterSettingChange } catch { }
                 try { Restore-UiAfterMenu $y0 $menuH } catch { }
 
                 return $changed
@@ -2473,6 +2705,12 @@ function Invoke-MenuIdleTick {
     # Keep file watching and output publishing active while an overlay menu is open.
     # UI updates are suppressed automatically while $script:UiOverlayActive is $true.
     try { Do-UpdateIfNeeded } catch { }
+
+    try {
+        if (Enforce-FixedConsoleLayout) { $script:OverlayNeedsRedraw = $true }
+    } catch { }
+    try { Lock-ConsoleScrolling } catch { }
+    try { [Console]::CursorVisible = $false } catch { }
 }
 
 function Toggle-AsciiSafe {
@@ -2685,6 +2923,7 @@ function Write-AtSegments([int]$x, [int]$y, [object[]]$segments, [ConsoleColor]$
 
 $script:UiInited = $false
 $script:UiOverlayActive = $false
+$script:OverlayNeedsRedraw = $false
 $script:HeaderTop = 0
 
 $script:HeaderLineCount = 7
@@ -2846,8 +3085,52 @@ function Ensure-MinConsoleLayout {
     } catch { }
 }
 
+function Enforce-FixedConsoleLayout {
+    # Best-effort enforcement of the fixed console window/buffer size WITHOUT clearing the screen.
+    # Returns $true if a size correction was applied.
+    $changed = $false
+    try {
+        if ($FixedConsoleWidth  -lt 40) { $FixedConsoleWidth  = 40 }
+        if ($FixedConsoleHeight -lt 20) { $FixedConsoleHeight = 20 }
+
+        $lw = 0; $lh = 0
+        try { $lw = [Console]::LargestWindowWidth } catch { }
+        try { $lh = [Console]::LargestWindowHeight } catch { }
+
+        $targetW = $FixedConsoleWidth
+        $targetH = $FixedConsoleHeight
+        if ($lw -gt 0) { $targetW = [Math]::Min($targetW, $lw) }
+        if ($lh -gt 0) { $targetH = [Math]::Min($targetH, $lh) }
+
+        $curBW = [Console]::BufferWidth
+        $curBH = [Console]::BufferHeight
+        $curWW = [Console]::WindowWidth
+        $curWH = [Console]::WindowHeight
+
+        # Shrink: window first, then buffer. Grow: buffer first, then window.
+        if ($curWW -gt $targetW -or $curWH -gt $targetH) {
+            if ($curWW -ne $targetW -and $targetW -gt 0) { [Console]::WindowWidth  = $targetW; $changed = $true }
+            if ($curWH -ne $targetH -and $targetH -gt 0) { [Console]::WindowHeight = $targetH; $changed = $true }
+        }
+
+        if ($curBW -ne $targetW -and $targetW -gt 0) { [Console]::BufferWidth  = $targetW; $changed = $true }
+        if ($curBH -ne $targetH -and $targetH -gt 0) { [Console]::BufferHeight = $targetH; $changed = $true }
+
+        if ([Console]::WindowWidth  -ne $targetW -and $targetW -gt 0) { [Console]::WindowWidth  = $targetW; $changed = $true }
+        if ([Console]::WindowHeight -ne $targetH -and $targetH -gt 0) { [Console]::WindowHeight = $targetH; $changed = $true }
+
+        # Ensure no scrollbars (buffer == window)
+        if ([Console]::BufferWidth  -ne [Console]::WindowWidth)  { [Console]::BufferWidth  = [Console]::WindowWidth;  $changed = $true }
+        if ([Console]::BufferHeight -ne [Console]::WindowHeight) { [Console]::BufferHeight = [Console]::WindowHeight; $changed = $true }
+
+        if ([Console]::WindowTop  -ne 0) { [Console]::WindowTop  = 0 }
+        if ([Console]::WindowLeft -ne 0) { [Console]::WindowLeft = 0 }
+    } catch { }
+    return $changed
+}
+
+
 function Ensure-UiFresh {
-    if ($script:UiOverlayActive) { return }
     $w = -1
     $h = -1
     try { $w = [Console]::WindowWidth } catch { }
@@ -3141,7 +3424,7 @@ function Render-SettingsAndLegend {
 
         @{ Text = "Playout delimiter ";      Fg = $dimFg }
         @{ Text = "[";                       Fg = $valueFgEnabled }
-        @{ Text = "$global:SepGlyph";        Fg = $valueFgEnabled }
+        @{ Text = (Format-DelimiterForDisplay $global:SepGlyph); Fg = $valueFgEnabled }
         @{ Text = "]";                       Fg = $valueFgEnabled }
     )
 # Separator line directly under the Last update row
@@ -5033,6 +5316,8 @@ function Fit-ArtistPreserveTitle([string]$artistOriginal, [string]$artistCandida
     $artistCandidate = Cleanup-Whitespace $artistCandidate
     $title           = Cleanup-Whitespace $title
 
+    $multiOriginal   = (Looks-LikeMultiArtist $artistOriginal)
+
     if (-not $artistCandidate -or -not $title) { return $null }
 
     $base = "$artistCandidate$joiner$title"
@@ -5058,16 +5343,47 @@ function Fit-ArtistPreserveTitle([string]$artistOriginal, [string]$artistCandida
     } catch { $minDesiredArtist = $null }
 
     if (-not [string]::IsNullOrWhiteSpace($minDesiredArtist)) {
-        if (Looks-LikeMultiArtist $artistOriginal) {
+        # Only enforce the "do not cut the first credited artist" guard when the original artist
+        # string actually contains multiple credited artists. For a single long artist name, it is
+        # preferable to truncate on a word boundary to preserve the full title.
+        if ($multiOriginal) {
             $minDesiredArtist = (Cleanup-Whitespace ($minDesiredArtist + ""))
+            if ($roomForArtist -lt $minDesiredArtist.Length) {
+                return $null
+            }
         }
-        if ($roomForArtist -lt $minDesiredArtist.Length) {
-            return $null
+    }
+
+    if ($artistCandidate.Length -gt $roomForArtist) {
+        # Heuristic: if we can keep the full artist by truncating the title later, prefer that when
+        # squeezing the artist would produce an awkward or misleading result (e.g. only initials, or
+        # a cut surname like "Margot Frie...").
+        $maxArtistIfTitleMin1 = $maxLen - $joiner.Length - 1
+        if ($artistCandidate.Length -le $maxArtistIfTitleMin1) {
+            $guardName = $minDesiredArtist
+            if ([string]::IsNullOrWhiteSpace($guardName)) { $guardName = $artistCandidate }
+
+            $tokens = @()
+            try {
+                foreach ($tok in ($guardName -split "\s+")) {
+                    $t = Cleanup-Whitespace $tok
+                    if (-not [string]::IsNullOrWhiteSpace($t)) { $tokens += $t }
+                }
+            } catch { $tokens = @() }
+
+            if ($tokens.Count -ge 2) {
+                $firstTok = $tokens[0]
+                $lastTok  = $tokens[$tokens.Count - 1]
+                $needForFirstLast = $firstTok.Length + 1 + $lastTok.Length
+
+                # If we cannot keep both the first and last token in full, do not squeeze the artist here.
+                if ($roomForArtist -lt $needForFirstLast) { return $null }
+            }
         }
     }
 
     $suffix = ""
-    $wantSuffix = (Looks-LikeMultiArtist $artistOriginal)
+    $wantSuffix = $multiOriginal
 
     $artistBudget = $roomForArtist
     if ($wantSuffix -and ($artistBudget -gt $suffix.Length + 1)) {
@@ -5133,7 +5449,18 @@ function Fit-ArtistPreserveTitle([string]$artistOriginal, [string]$artistCandida
         }
     }
 
-    $aCut = WordCut $artistCandidate $artistBudget
+    $ellipsis = "..."
+    $aCut = $null
+    if ($artistCandidate.Length -gt $artistBudget -and $artistBudget -gt ($ellipsis.Length + 5)) {
+        $aCut = WordCut $artistCandidate ($artistBudget - $ellipsis.Length)
+        $aCut = Trim-ForEllipsis $aCut
+        if (-not [string]::IsNullOrWhiteSpace($aCut)) {
+            $aCut = (Cleanup-Whitespace ($aCut + $ellipsis))
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($aCut)) {
+        $aCut = WordCut $artistCandidate $artistBudget
+    }
     if ([string]::IsNullOrWhiteSpace($aCut)) { return $null }
 
     $outArtist = $aCut
@@ -5407,14 +5734,22 @@ function Build-RtPlusOutputFromParts([string]$artist, [string]$title) {
         return ("\+ti{0}\-" -f $visibleTitle)
     }
 
-    $visible = Smart-Truncate-Fields $a $t $MaxLen $OutJoin
+        $visible = Smart-Truncate-Fields $a $t $MaxLen $OutJoin
+    $visible = Cleanup-Whitespace $visible
+    if (-not (Has-LettersOrDigits $visible)) { return "" }
+
+    # If length pressure caused the title to be dropped, the visible RT will contain no joiner.
+    # In that case, emit an artist-only RT+ payload (consistent with the visible RT).
+    if (-not $visible.Contains($OutJoin)) {
+        return ("\+ar{0}\-" -f $visible)
+    }
 
     $p = Split-VisibleRtToArtistTitle $visible
     if ($null -ne $p) {
         return ("\+ar{0}\-{1}\+ti{2}\-" -f $p.Artist, $OutJoin, $p.Title)
     }
 
-    return ""
+    return 
 }
 
 # -------------------- Country/region token helpers (RegionInfo-derived) --------------------
@@ -5880,7 +6215,16 @@ function Compose-OutputsFromRaw([string]$raw) {
         $rtp = UnicodeSafe-FinalPass (Build-RtPlusOutputFromParts $parts.Artist $parts.Title)
     }
 
+    if ($forceAsciiFinal -and $rt.Length -gt $MaxLen) {
+        $aF = AsciiSafe-FinalPass $parts.Artist
+        $tF = AsciiSafe-FinalPass $parts.Title
+        $rt  = Build-VisibleRtText $aF $tF
+        $rtp = AsciiSafe-FinalPass (Build-RtPlusOutputFromParts $aF $tF)
+    }
+
     if ($rt.Length -gt $MaxLen) { $rt = (Cleanup-Whitespace ($rt.Substring(0, $MaxLen))).Trim() }
+    
+   
 
     return [pscustomobject]@{ Prefix = $prefix; Rt = $rt; RtPlus = $rtp }
 }
