@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.10"
+$ScriptVersion = "1.10.11"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -1838,7 +1838,7 @@ $defaultDir = ''
         }
     }
 
-    function _DrawFrame([string]$CursorFolder) {
+    function _DrawFrame([string]$CurrentFolder) {
         Write-At $x0 $y0 ("┌" + ("─" * ($menuW - 2)) + "┐") ($UI_Color_MenuFrame)
         _WriteFrameTextLine ($y0 + 1) $title ($UI_Color_DimText)
         _WriteFrameTextLine ($y0 + 2) $help1 ($UI_Color_DimText)
@@ -1902,8 +1902,8 @@ $defaultDir = ''
             }
         }
 
-        # Info line (always present): show the folder path that is currently under the cursor.
-        _WriteInfoLine ($y0 + 4) "Current folder:" $CursorFolder
+        # Info line (always present): show the folder path that we are currently browsing.
+        _WriteInfoLine ($y0 + 4) "Current folder:" $CurrentFolder
 
         Write-At $x0 ($listTopY - 1) ("├" + ("─" * ($menuW - 2)) + "┤") ($UI_Color_MenuFrame)
 
@@ -1915,7 +1915,31 @@ for ($i = 0; $i -lt $listLines; $i++) {
 Write-At $x0 ($listTopY + $listLines) ("└" + ("─" * ($menuW - 2)) + "┘") ($UI_Color_MenuFrame)
     }
 
-    function _GetItems {
+    
+    function _GetSelectPathDisplay([string]$path) {
+        try {
+            if ([string]::IsNullOrWhiteSpace($path)) { return $path }
+
+            $p = "$path".Trim()
+
+            # Ensure root paths are displayed with a trailing backslash (e.g. "C:\")
+            if (-not $p.EndsWith('\')) {
+                if ($p -match '^[A-Za-z]:$') {
+                    return ($p + '\')
+                }
+                # UNC share root (\\server\share)
+                if ($p -match '^\\\\[^\\]+\\[^\\]+$') {
+                    return ($p + '\')
+                }
+            }
+
+            return $p
+        } catch {
+            return $path
+        }
+    }
+
+function _GetItems {
         $items = New-Object System.Collections.Generic.List[string]
 
         # Virtual helper entry (first item when shown):
@@ -1929,15 +1953,9 @@ Write-At $x0 ($listTopY + $listLines) ("└" + ("─" * ($menuW - 2)) + "┘") (
         try {
             $root = [System.IO.Path]::GetPathRoot($currentDir)
             if (-not [string]::IsNullOrWhiteSpace($root)) {
-                $rel = ""
-                try { $rel = Split-Path -Path $defaultDir -NoQualifier } catch { $rel = "" }
-                if (-not [string]::IsNullOrWhiteSpace($rel)) { $rel = $rel.TrimStart('\') }
-                if ([string]::IsNullOrWhiteSpace($rel)) {
-                    try { $rel = Split-Path -Path $defaultDir -Leaf } catch { $rel = "" }
-                }
-                if (-not [string]::IsNullOrWhiteSpace($rel)) {
-                    $defaultCreateDir = Join-Path $root $rel
-                }
+                # Always suggest the canonical default folder name on the selected volume (e.g. D:\RDS).
+                $defaultCreateDir = Join-Path $root "RDS"
+
             }
         } catch { }
 
@@ -1959,7 +1977,7 @@ Write-At $x0 ($listTopY + $listLines) ("└" + ("─" * ($menuW - 2)) + "┘") (
             }
         }
 
-        [void]$items.Add("[Select this folder]")
+        [void]$items.Add(("[Select {0}]" -f (_GetSelectPathDisplay $currentDir)))
 
 $parentPath = $null
 try { $parentPath = Split-Path -Path $currentDir -Parent } catch { $parentPath = $null }
@@ -2040,7 +2058,7 @@ if (-not [string]::IsNullOrWhiteSpace($parentPath) -and ($parentPath -ne $curren
         try {
             $items = _GetItems
             $cursorFolder = _GetCursorFolderDisplay $items $selectedIndex
-            _DrawFrame $cursorFolder
+            _DrawFrame $currentDir
             _DrawList $items
         } catch { }
     }
@@ -2401,7 +2419,7 @@ function _PromptSelectVolume {
 
             $choice = $items[$idx]
 
-            if (($choice -match '^\[Select.*\]$') -and ($choice -match 'folder')) {
+            if ($choice -match '^\[Select\s+.*\]$') {
                 # Cursor is on the "select current directory" entry
                 return $currentDir
             }
@@ -2424,7 +2442,7 @@ function _PromptSelectVolume {
 
     $items = _GetItems
     $cursorFolder = _GetCursorFolderDisplay $items $selectedIndex
-    _DrawFrame $cursorFolder
+    _DrawFrame $currentDir
 
         $needsRedraw = $true
 
@@ -2436,7 +2454,7 @@ function _PromptSelectVolume {
             if ($selectedIndex -lt 0) { $selectedIndex = 0 }
 
             $cursorFolder = _GetCursorFolderDisplay $items $selectedIndex
-            _DrawFrame $cursorFolder
+            _DrawFrame $currentDir
             _DrawList $items
 
             $needsRedraw = $false
@@ -2575,7 +2593,7 @@ function _PromptSelectVolume {
                 return $changed
             }
 
-if (($choice -match '^\[Select.*\]$') -and ($choice -match 'folder')) {
+if ($choice -match '^\[Select\s+.*\]$') {
 
                 $picked = $currentDir
                 if (-not $picked) { $picked = $defaultDir }
