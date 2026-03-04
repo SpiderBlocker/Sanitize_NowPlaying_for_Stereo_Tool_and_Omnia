@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.12"
+$ScriptVersion = "1.10.13"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -4430,6 +4430,26 @@ function Strip-CountrySuffix([string]$s) {
     # This is intentionally conservative: we only strip a *final* token at the end.
 
     Ensure-CountryData
+    # --- 0) Event-style bracket suffixes with year + country: "(... 2010 - Finland)" ---
+    # This is language-agnostic and intentionally conservative:
+    # - must be a *trailing* bracket suffix ((), [], {})
+    # - must contain a 4-digit year (19xx/20xx)
+    # - must end with "- <country>" (dash can be -, – or —), where <country> is a known country token
+    $m0 = [regex]::Match($t, '^(?<name>.+?)\s*(?:\(\s*(?<tag>[^)]*?)\s*\)|\[\s*(?<tag>[^\]]*?)\s*\]|\{\s*(?<tag>[^}]*?)\s*\})\s*$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if ($m0.Success) {
+        $name0 = Cleanup-Whitespace $m0.Groups["name"].Value
+        $tag0  = Cleanup-Whitespace $m0.Groups["tag"].Value
+
+        if (-not [string]::IsNullOrWhiteSpace($name0) -and ($tag0 -match '\b(?:19|20)\d{2}\b')) {
+            $parts = [regex]::Split($tag0, '\s*[-–—]\s*') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            if ($parts.Count -ge 2) {
+                $last = Cleanup-Whitespace $parts[$parts.Count - 1]
+                if (Test-IsCountryToken $last) {
+                    return $name0
+                }
+            }
+        }
+    }
 
     # --- 1) Two-letter country/region codes (ISO2) ---
     $m = [regex]::Match($t, '^(?<name>.+?)\s*(?:\(\s*(?<cc>[A-Z]{2})\s*\)|\[\s*(?<cc>[A-Z]{2})\s*\]|\{\s*(?<cc>[A-Z]{2})\s*\})\s*$')
