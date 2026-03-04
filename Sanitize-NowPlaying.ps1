@@ -106,12 +106,13 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.11"
+$ScriptVersion = "1.10.12"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
 $EnableConsoleFontTweak = $true      # Best-effort font selection (classic conhost only)
 $EnableHardScrollLock   = $true      # Best-effort hard scrollback removal (classic conhost only)
+$EnableConsoleResizeLock = $true      # Best-effort resize/maximize lock (classic conhost only)
 
 # UI margins (requested): 1 blank row at top and 1 blank column at left.
 $script:UiOffsetX     = 1
@@ -672,6 +673,7 @@ try {
 
     if (-not $createdNew) {
         if (-not $script:Mutex.WaitOne(0, $false)) {
+            try { Clear-Host } catch { }
             Show-StartupToast -Message "Another instance is already running." -Seconds 2
             exit 0
         }
@@ -729,6 +731,83 @@ namespace Win {
         [void][Win.ConsoleModeNative]::SetConsoleMode($h, $mode)
     } catch { }
 }
+
+function Disable-ConsoleResizeControls {
+    # Best-effort: remove resize borders (sizer grip) and disable the maximize button in classic conhost.
+    # In Windows Terminal this is typically not applicable and is skipped.
+
+    try {
+        if ([bool]$env:WT_SESSION) { return }  # Windows Terminal (or compatible host)
+
+        if (-not ("Win.ConsoleWindowNative" -as [type])) {
+            Add-Type -TypeDefinition @"
+namespace Win {
+    using System;
+    using System.Runtime.InteropServices;
+
+    public static class ConsoleWindowNative {
+        public const int GWL_STYLE = -16;
+
+        public const int WS_MAXIMIZEBOX = 0x00010000;
+        public const int WS_THICKFRAME  = 0x00040000; // WS_SIZEBOX / resizable border
+
+        public const uint SWP_NOSIZE       = 0x0001;
+        public const uint SWP_NOMOVE       = 0x0002;
+        public const uint SWP_NOZORDER     = 0x0004;
+        public const uint SWP_FRAMECHANGED = 0x0020;
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetConsoleWindow();
+
+        [DllImport("user32.dll", EntryPoint="GetWindowLongPtr", SetLastError=true)]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint="SetWindowLongPtr", SetLastError=true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint="GetWindowLong", SetLastError=true)]
+        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint="SetWindowLong", SetLastError=true)]
+        private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", SetLastError=true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+            int X, int Y, int cx, int cy, uint uFlags);
+
+        public static int GetStyle(IntPtr hwnd) {
+            if (IntPtr.Size == 8) return (int)GetWindowLongPtr64(hwnd, GWL_STYLE);
+            return GetWindowLong32(hwnd, GWL_STYLE);
+        }
+
+        public static void SetStyle(IntPtr hwnd, int style) {
+            if (IntPtr.Size == 8) SetWindowLongPtr64(hwnd, GWL_STYLE, (IntPtr)style);
+            else SetWindowLong32(hwnd, GWL_STYLE, style);
+        }
+
+        public static void RefreshFrame(IntPtr hwnd) {
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+    }
+}
+"@
+        }
+
+        $hwnd = [Win.ConsoleWindowNative]::GetConsoleWindow()
+        if ($hwnd -eq [IntPtr]::Zero) { return }
+
+        $style = [Win.ConsoleWindowNative]::GetStyle($hwnd)
+        $mask = [Win.ConsoleWindowNative]::WS_THICKFRAME -bor [Win.ConsoleWindowNative]::WS_MAXIMIZEBOX
+        $newStyle = $style -band (-bnot $mask)
+
+        if ($newStyle -ne $style) {
+            [Win.ConsoleWindowNative]::SetStyle($hwnd, $newStyle)
+            [Win.ConsoleWindowNative]::RefreshFrame($hwnd)
+        }
+    } catch { }
+}
+
 
 function Clear-ConsoleSelectionIfActive {
     # Best-effort mitigation for Ctrl+A "Select All" freezing the console host.
@@ -869,6 +948,9 @@ Disable-ConsoleQuickEdit
 # Only attempt it in classic conhost sessions (best-effort).
 try {
     $isWindowsTerminal = [bool]$env:WT_SESSION
+    if (-not $isWindowsTerminal -and $EnableConsoleResizeLock) {
+        Disable-ConsoleResizeControls
+    }
     if (-not $isWindowsTerminal -and $EnableConsoleFontTweak) {
         Set-ConsoleFontBestEffort -FontHeight 16
     }
