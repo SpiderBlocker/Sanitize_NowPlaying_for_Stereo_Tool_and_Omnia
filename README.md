@@ -82,4 +82,4 @@ Then configure Stereo Tool (or any other RDS encoder) to read from the sanitized
 
 ![UI example](images/ex14.png)
 
-
+![UI example](images/ex15.png)
