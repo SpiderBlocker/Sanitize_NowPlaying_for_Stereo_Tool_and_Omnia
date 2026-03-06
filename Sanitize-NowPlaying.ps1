@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.13"
+$ScriptVersion = "1.10.14"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -5203,7 +5203,7 @@ function Strip-VersionMixTail([string]$s) {
     if ([string]::IsNullOrWhiteSpace($s)) { return $s }
     $t = $s.Trim()
 
-    $kw = "(?:radio\s+edit|edit|single\s+version|extended\s+(?:mix|version)|club\s+mix|dub(?:\s+mix)?|instrumental|acoustic|acoustical|remix|mix|version)"
+    $kw = "(?:radio\s+edit|edit|single\s+(?:version|versie|versión|versione|versao|versão)|extended\s+(?:mix|version|versie|versión|versione|versao|versão)|club\s+mix|dub(?:\s+mix)?|instrumental|acoustic|acoustical|remix|mix|version|versie|versión|versione|versao|versão)"
     $optYear = "(?:\s*[\(\[]\s*(?:19|20)\d{2}\s*[\)\]])?"
 
     # Require whitespace around dash/colon separators to avoid matching hyphenated words inside titles.
@@ -5224,14 +5224,6 @@ function Strip-VersionMixTail([string]$s) {
         "IgnoreCase"
     ).Trim()
     if ($t3 -ne $t -and -not [string]::IsNullOrWhiteSpace($t3)) { return $t3 }
-
-    $t4 = [regex]::Replace(
-        $t,
-        "\s+\b$kw\b$optYear\s*$",
-        "",
-        "IgnoreCase"
-    ).Trim()
-    if ($t4 -ne $t -and -not [string]::IsNullOrWhiteSpace($t4)) { return $t4 }
 
     return $t
 }
