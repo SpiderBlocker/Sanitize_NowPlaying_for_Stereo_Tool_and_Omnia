@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.14"
+$ScriptVersion = "1.10.15"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -4702,7 +4702,7 @@ function Strip-ArtistDuplicateTitleTail([string]$artist, [string]$title) {
     #
     # Intentionally conservative: only strips when the suffix matches an already-credited artist; allows optional whitespace around the dash.
 
-    $pattern = "^(?<h>.+)\s*[-–—]\s*(?<t>.+?)\s*$"
+    $pattern = "^(?<h>.+?)\s+[-–—]\s+(?<t>.+?)\s*$"
     $m = [regex]::Match($title, $pattern, "IgnoreCase")
     if (-not $m.Success) { return $title }
 
@@ -4745,7 +4745,7 @@ function Strip-ArtistDuplicateTitlePrefix([string]$artist, [string]$title) {
     }
 
     # 2) Plain artist prefix with a required dash separator.
-    $patternDash = "^(?<p>.+?)\s*[-–—]\s*(?<r>.+?)\s*$"
+    $patternDash = "^(?<p>.+?)\s+[-–—]\s+(?<r>.+?)\s*$"
     $m = [regex]::Match($title, $patternDash, "IgnoreCase")
     if (-not $m.Success) { return $title }
 
