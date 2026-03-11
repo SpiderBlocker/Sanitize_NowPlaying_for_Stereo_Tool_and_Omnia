@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.15"
+$ScriptVersion = "1.10.16"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -5199,6 +5199,37 @@ function Strip-TitleWhitelistTails([string]$s) {
     return $t
 }
 
+function Strip-CompilationTail([string]$s) {
+    if ([string]::IsNullOrWhiteSpace($s)) { return $s }
+    $t = $s.Trim()
+
+    # Remove clearly separated compilation/album markers such as " - Greatest Hits (2009)".
+    # This is deliberately conservative: it only strips a trailing segment when the marker is
+    # introduced by a strong separator or enclosed in trailing brackets.
+    $kw = "(?:greatest\s+hits|the\s+hits(?:\s+\d{1,3})?|(?:the\s+)?best\s+of|very\s+best\s+of)"
+    $optYear = "(?:\s*(?:[\(\[]\s*)?(?:19|20)\d{2}(?:\s*[\)\]])?)?"
+    $optTail = "(?:\s*[-,:/]\s*[A-Za-z0-9][^\r\n\)\]]{0,40})?"
+    $sepDash = "(?:\s+[-:–—]\s*|\s*[-:–—]\s+)"
+
+    $t2 = [regex]::Replace(
+        $t,
+        "\s*[\(\[]\s*\b$kw\b$optTail\s*[\)\]]$optYear\s*$",
+        "",
+        "IgnoreCase"
+    ).Trim()
+    if ($t2 -ne $t -and -not [string]::IsNullOrWhiteSpace($t2)) { return $t2 }
+
+    $t3 = [regex]::Replace(
+        $t,
+        "$sepDash\b$kw\b$optTail$optYear\s*$",
+        "",
+        "IgnoreCase"
+    ).Trim()
+    if ($t3 -ne $t -and -not [string]::IsNullOrWhiteSpace($t3)) { return $t3 }
+
+    return $t
+}
+
 function Strip-VersionMixTail([string]$s) {
     if ([string]::IsNullOrWhiteSpace($s)) { return $s }
     $t = $s.Trim()
@@ -6129,10 +6160,12 @@ if ($sepCount -eq 1) {
     $artist = Strip-CountryPrefix $artist
     $artist = Remove-ArtistAcronymSuffix $artist
     $artist = Remove-ArtistRegionSuffix $artist
+    $artist = Strip-CompilationTail $artist
     $title  = Normalize-Field $titleRaw
 
     $title  = Strip-CountryPrefix $title
     $title  = Strip-CountrySuffix $title
+    $title  = Strip-CompilationTail $title
 
     if ([string]::IsNullOrWhiteSpace($artist) -and [string]::IsNullOrWhiteSpace($title)) { return $null }
 
