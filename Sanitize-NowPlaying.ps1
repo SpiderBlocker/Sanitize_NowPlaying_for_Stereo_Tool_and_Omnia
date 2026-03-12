@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.16"
+$ScriptVersion = "1.10.17"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -6161,6 +6161,7 @@ if ($sepCount -eq 1) {
     $artist = Remove-ArtistAcronymSuffix $artist
     $artist = Remove-ArtistRegionSuffix $artist
     $artist = Strip-CompilationTail $artist
+    $artist = Remove-ArtistAcronymSuffix $artist
     $title  = Normalize-Field $titleRaw
 
     $title  = Strip-CountryPrefix $title
