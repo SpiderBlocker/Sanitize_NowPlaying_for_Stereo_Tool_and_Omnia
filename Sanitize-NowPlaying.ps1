@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.18"
+$ScriptVersion = "1.10.19"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -4869,6 +4869,24 @@ function Dedup-AdjacentCommaArtistPrefix([string]$artist) {
     return $a
 }
 
+function Dedup-BracketedArtistPrefix([string]$artist) {
+    if ([string]::IsNullOrWhiteSpace($artist)) { return $artist }
+    # Conservative bracketed duplicate: "[Artist] Artist" -> "Artist"
+    # Also accepts () and {} wrappers, but only when the bracketed prefix and the remaining
+    # artist text normalize to the same credited name.
+    $a = Cleanup-Whitespace $artist
+    $m = [regex]::Match($a, '^\s*[\(\[\{]\s*(?<p>[^\)\]\}]+?)\s*[\)\]\}]\s+(?<r>.+?)\s*$', 'CultureInvariant')
+    if (-not $m.Success) { return $a }
+    $prefix = Cleanup-Whitespace $m.Groups["p"].Value
+    $rest   = Cleanup-Whitespace $m.Groups["r"].Value
+    if ([string]::IsNullOrWhiteSpace($prefix) -or [string]::IsNullOrWhiteSpace($rest)) { return $a }
+    $k1 = Normalize-NameKey $prefix
+    $k2 = Normalize-NameKey $rest
+    if ($k1 -and $k2 -and ($k1 -eq $k2)) {
+        return $rest
+    }
+    return $a
+}
 # -------------------- IO helpers ---------------------------------------------
 
 function Read-TextRobust([string]$path) {
@@ -6218,6 +6236,7 @@ if ($sepCount -eq 1) {
     $artist = Strip-AlwaysRemoveNoiseTags       $artist
     $artist = Filter-ToRdsLatin  $artist
     $artist = Strip-AlwaysRemoveNoiseTags       $artist
+    $artist = Dedup-BracketedArtistPrefix $artist
     $artist = Dedup-AdjacentCommaArtistPrefix $artist
     $artist = Cleanup-Whitespace $artist
     $artist = Strip-AlwaysRemoveNoiseTags       $artist
