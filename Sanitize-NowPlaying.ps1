@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.17"
+$ScriptVersion = "1.10.18"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -5206,7 +5206,7 @@ function Strip-CompilationTail([string]$s) {
     # Remove clearly separated compilation/album markers such as " - Greatest Hits (2009)".
     # This is deliberately conservative: it only strips a trailing segment when the marker is
     # introduced by a strong separator or enclosed in trailing brackets.
-    $kw = "(?:greatest\s+hits|the\s+hits(?:\s+\d{1,3})?|(?:the\s+)?best\s+of|very\s+best\s+of)"
+    $kw = "(?:greatest\s+hits(?:\s+[A-Za-z0-9&'\.\-/]+){0,4}|the\s+hits(?:\s+\d{1,3})?|the\s+essential(?:\s+[A-Za-z0-9&'\.\-/]+){0,4}|(?:the\s+)?best\s+of(?:\s+[A-Za-z0-9&'\.\-/]+){0,4}|(?:the\s+)?very\s+best\s+of(?:\s+[A-Za-z0-9&'\.\-/]+){0,4}|(?:the\s+)?ultimate\s+collection)"
     $optYear = "(?:\s*(?:[\(\[]\s*)?(?:19|20)\d{2}(?:\s*[\)\]])?)?"
     $optTail = "(?:\s*[-,:/]\s*[A-Za-z0-9][^\r\n\)\]]{0,40})?"
     $sepDash = "(?:\s+[-:–—]\s*|\s*[-:–—]\s+)"
@@ -6093,6 +6093,18 @@ if ($sepCount -eq 1) {
 
     $artistRaw = Strip-TrackNumberPrefix $artistRaw
     $artistRaw = Strip-TrackNumberPrefixLoose $artistRaw
+
+    # Strip a clearly separated leading 4-digit year from the *artist* field, e.g.
+    # "2002 - Leonard Cohen" or "2002 – Leonard Cohen - The Essential".
+    # This is deliberately conservative: it only triggers for a standalone year token
+    # followed by a strong separator and payload that still contains at least one letter.
+    $mYearPrefix = [regex]::Match($artistRaw, '^(?<year>(?:19|20)\d{2})\s*[-–—:]\s*(?<rest>.+)$')
+    if ($mYearPrefix.Success) {
+        $rest = Cleanup-Whitespace $mYearPrefix.Groups["rest"].Value
+        if (-not [string]::IsNullOrWhiteSpace($rest) -and $rest -match '\p{L}') {
+            $artistRaw = $rest
+        }
+    }
 
     # If the artist field ends with an EAC rip marker that also carries a track number (e.g., "Artist - 10 (EAC)"),
     # remove that entire trailing token. This is deliberately strict: it only triggers when an explicit "(EAC)" or "[EAC]"
