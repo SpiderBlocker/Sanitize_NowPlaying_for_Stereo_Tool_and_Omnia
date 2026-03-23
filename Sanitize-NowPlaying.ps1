@@ -106,7 +106,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.19"
+$ScriptVersion = "1.10.20"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -5248,6 +5248,40 @@ function Strip-CompilationTail([string]$s) {
     return $t
 }
 
+function Strip-SeparatedYearTail([string]$s) {
+    if ([string]::IsNullOrWhiteSpace($s)) { return $s }
+    $t = $s.Trim()
+
+    # Remove a standalone trailing year only when it is clearly separated from the payload.
+    # Examples:
+    # - "Let's Dance [1972]" -> "Let's Dance"
+    # - "Let's Dance - 1972" -> "Let's Dance"
+    #
+    # This is intentionally conservative: it does not strip years that are part of the actual
+    # title text, such as "Summer of '69" or "Symphony No. 1999" style content without a
+    # strong separator before the year.
+    $year = "(?:19|20)\d{2}"
+    $sepDash = "(?:\s+[-:–—]\s*|\s*[-:–—]\s+)"
+
+    $t2 = [regex]::Replace(
+        $t,
+        "\s*[\(\[\{]\s*$year\s*[\)\]\}]\s*$",
+        "",
+        "IgnoreCase"
+    ).Trim()
+    if ($t2 -ne $t -and -not [string]::IsNullOrWhiteSpace($t2)) { return $t2 }
+
+    $t3 = [regex]::Replace(
+        $t,
+        "$sepDash$year\s*$",
+        "",
+        "IgnoreCase"
+    ).Trim()
+    if ($t3 -ne $t -and -not [string]::IsNullOrWhiteSpace($t3)) { return $t3 }
+
+    return $t
+}
+
 function Strip-VersionMixTail([string]$s) {
     if ([string]::IsNullOrWhiteSpace($s)) { return $s }
     $t = $s.Trim()
@@ -6191,12 +6225,14 @@ if ($sepCount -eq 1) {
     $artist = Remove-ArtistAcronymSuffix $artist
     $artist = Remove-ArtistRegionSuffix $artist
     $artist = Strip-CompilationTail $artist
+    $artist = Strip-SeparatedYearTail $artist
     $artist = Remove-ArtistAcronymSuffix $artist
     $title  = Normalize-Field $titleRaw
 
     $title  = Strip-CountryPrefix $title
     $title  = Strip-CountrySuffix $title
     $title  = Strip-CompilationTail $title
+    $title  = Strip-SeparatedYearTail $title
 
     if ([string]::IsNullOrWhiteSpace($artist) -and [string]::IsNullOrWhiteSpace($title)) { return $null }
 
