@@ -1,4 +1,4 @@
-# Sanitize NowPlaying for Stereo Tool
+# Sanitize NowPlaying for Stereo Tool / Omnia
 
 Lightweight PowerShell tool that cleans and normalizes nowplaying.txt metadata for reliable RDS RadioText (RT and RT+).
 
@@ -15,7 +15,7 @@ This project was created through iterative co-development with ChatGPT 5.2 / 5.4
 - Adaptive trimming to the RDS 64-character limit with priority-based shortening for optimal readability
 - Optional transliteration (Greek/Cyrillic) and ASCII-safe mode
 - Clean output for RT and RT+ (artist/title tagging)
-- Automatic flush on exit to clear output files, allowing Stereo Tool to skip processing and preventing stale data
+- Automatic flush on exit to clear output files, allowing Stereo Tool or Omnia to skip processing and preventing stale data
 - Multilingual “Now playing” prefix
 - Configurable (including custom) field delimiter
 - Color console UI with status view and F10 settings menu
@@ -50,7 +50,7 @@ In your playout software, configure nowplaying.txt to be written to the selected
 Ensure that the field delimiter used between %artist and %title matches the delimiter configured in the F10 menu (Playout delimiter). The selected delimiter is automatically copied to the clipboard for convenience. For example, when the recommended "␟" character is used, the metadata setting in the playout software should be:
 
     "%artist␟%title"
-Then configure Stereo Tool (or any other RDS encoder) to read from the sanitized output text file(s).
+Then configure Stereo Tool or Omnia (or any other RDS encoder) to read from the sanitized output text file(s).
 
 # Example screenshots
 
