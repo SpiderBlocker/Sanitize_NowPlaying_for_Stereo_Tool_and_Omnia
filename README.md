@@ -1,5 +1,8 @@
 # Sanitize NowPlaying for Stereo Tool
 
+
+[Project landing page](https://spiderblocker.github.io/Sanitize_NowPlaying_for_Stereo_Tool/)
+
 Lightweight PowerShell tool that cleans and normalizes nowplaying.txt metadata for reliable RDS RadioText (RT and RT+).
 
 Designed for small and semi-professional FM stations that want clean, broadcast-ready RDS RadioText with minimal manual library tagging.
