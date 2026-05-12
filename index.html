@@ -55,7 +55,10 @@
         code { color:#fff; background:var(--code); border-radius:6px; padding:2px 6px; white-space:nowrap; }
         pre { overflow-x:auto; color:#fff; background:var(--code); border-radius:14px; padding:16px; line-height:1.45; }
         .note { color:var(--muted); font-size:.95rem; }
-        footer { margin-top:28px; color:var(--muted); text-align:center; font-size:.92rem; }
+        footer { margin-top:28px; color:var(--muted); font-size:.92rem; }
+        footer .copyright { text-align:center; }
+        footer .disclaimer { margin:14px 0 0; padding:12px 14px; color:var(--muted); background:#f8fafc; border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:12px; font-size:.78rem; line-height:1.5; text-align:left; }
+        footer .disclaimer strong { color:#17202a; }
         @media (max-width:800px) { .grid, .flow { grid-template-columns:1fr; } .hero { padding:26px; } }
     </style>
 </head>
@@ -82,7 +85,10 @@
             <article class="card wide"><h2>Quick start</h2><p>Download the ZIP from the repository, place the standalone executable in a writable folder, and configure your playout software to write <code>nowplaying.txt</code> to the selected working directory. Then point Stereo Tool to the sanitized RT, RT+ and prefix output files.</p><pre><code>conhost.exe "C:\RDS\Sanitize-NowPlaying.exe"</code></pre><p class="note">Using the classic console host is recommended on Windows 11 when predictable console sizing and appearance are preferred over Windows Terminal tabs.</p></article>
             <article class="card wide"><h2>Repository</h2><p>Full documentation, screenshots, source code and the downloadable package are available in the GitHub repository.</p><p><a href="https://github.com/SpiderBlocker/Sanitize_NowPlaying_for_Stereo_Tool">Open Sanitize NowPlaying for Stereo Tool on GitHub</a></p></article>
         </section>
-        <footer><p>© 2026 Loenie · Sanitize NowPlaying for Stereo Tool</p></footer>
+        <footer>
+            <p class="copyright">© 2026 Loenie · Sanitize NowPlaying for Stereo Tool</p>
+            <p class="disclaimer"><strong>Disclaimer:</strong> Stereo Tool is a product of Thimeo Audio Technology B.V. This project is not affiliated with or endorsed by Thimeo Audio Technology B.V.</p>
+        </footer>
     </main>
 </body>
 </html>
