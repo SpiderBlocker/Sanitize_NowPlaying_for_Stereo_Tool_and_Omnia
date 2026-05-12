@@ -86,3 +86,6 @@ Then configure Stereo Tool (or any other RDS encoder) to read from the sanitized
 ![UI example](images/ex14.png)
 
 ![UI example](images/ex15.png)
+
+# Disclaimer
+Stereo Tool is a product of Thimeo Audio Technology B.V. This project is not affiliated with or endorsed by Thimeo Audio Technology B.V.
