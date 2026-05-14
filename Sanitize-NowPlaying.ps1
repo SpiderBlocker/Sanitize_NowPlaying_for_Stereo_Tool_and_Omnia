@@ -105,7 +105,7 @@ public static class NativeExitFlush
 try { [NativeExitFlush]::Install() } catch { }
 
 $ScriptTitle   = "Sanitize NowPlaying for Stereo Tool"
-$ScriptVersion = "1.10.21"
+$ScriptVersion = "1.10.22"
 # Console compatibility switches
 # These toggles exist to reduce the risk of host-specific console crashes/quirks on some systems.
 # Defaults preserve the current behavior.
@@ -6289,7 +6289,7 @@ Apply-WorkDirIfConfigured
 
 # -------------------- Watcher (Wait-Event) -----------------------------------
 
-$watchedDir = function Initialize-Watcher {
+function Initialize-Watcher {
     # (Re)create the FileSystemWatcher so changing WorkDir takes effect immediately.
     try {
         if ($script:fsw) {
